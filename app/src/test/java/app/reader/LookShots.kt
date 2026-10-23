@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -41,7 +42,7 @@ import org.robolectric.annotation.Config
 class LookShots {
     private val looks: List<Look> = System.getenv("LOOKS")?.takeIf { it.isNotBlank() }?.split(',')?.map { Looks.byId(it.trim()) } ?: Looks.all
     private val shots: Set<String> = System.getenv("SHOTS")?.takeIf { it.isNotBlank() }?.split(',')?.map { it.trim() }?.toSet()
-        ?: setOf("library", "settings", "chrome", "panel", "empty")
+        ?: setOf("library", "settings", "chrome", "panel", "empty", "dialogs")
 
     private data class Size(val name: String, val q: String)
     private val phone = Size("phone", "w412dp-h915dp-port-xxhdpi")
@@ -53,6 +54,16 @@ class LookShots {
         captureRoboImage("screens/${look.id}/$name-${size.name}-${mode.name.lowercase()}${if (warmth > 0) "-warm" else ""}.png") {
             ReaderTheme(look, mode, warmth) { content() }
         }
+    }
+
+    /** Dialogs live in their own window, so capture the whole screen of a real activity. */
+    private fun shootScreen(look: Look, size: Size, mode: Mode, name: String, content: @Composable () -> Unit) {
+        RuntimeEnvironment.setQualifiers(size.q)
+        val scenario = androidx.test.core.app.ActivityScenario.launch(androidx.activity.ComponentActivity::class.java)
+        scenario.onActivity { a -> a.setContent { ReaderTheme(look, mode, 0f) { content() } } }
+        org.robolectric.shadows.ShadowLooper.idleMainLooper()
+        com.github.takahirom.roborazzi.captureScreenRoboImage("screens/${look.id}/$name-${size.name}-${mode.name.lowercase()}.png")
+        scenario.close()
     }
 
     @Test fun all() {
@@ -89,6 +100,27 @@ class LookShots {
                     FakePage()
                     Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.BottomCenter) {
                         look.kit.TtsBar(true, "III. Taoism and Zennism", {}, {}, {}, {})
+                    }
+                }
+            }
+            if ("dialogs" in shots) {
+                val b = Sample.books.first()
+                for (size in listOf(phone, land)) {
+                    shootScreen(look, size, look.defaultMode, "sheet") {
+                        look.Library(Sample.library(), LibraryActions())
+                        look.kit.Sheet(b.title, b.path, listOf(
+                            app.reader.looks.SheetAction("Open") {}, app.reader.looks.SheetAction("Edit details") {},
+                            app.reader.looks.SheetAction("Mark as finished") {}, app.reader.looks.SheetAction("Reset progress") {},
+                            app.reader.looks.SheetAction("Close", quiet = true) {},
+                        ), {})
+                    }
+                    shootScreen(look, size, look.defaultMode, "form") {
+                        look.Library(Sample.library(), LibraryActions())
+                        look.kit.Form("Edit details", b.path, listOf(
+                            app.reader.looks.FormField("Title", b.title) {},
+                            app.reader.looks.FormField("Author", b.author ?: "") {},
+                            app.reader.looks.FormField("File name", "the-book-of-tea", "Renames the file in your books folder. Extension stays .epub.") {},
+                        ), "Save", {}, {})
                     }
                 }
             }

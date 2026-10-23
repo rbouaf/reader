@@ -197,7 +197,7 @@ object TraceKit : Kit {
     }
 
     @Composable
-    override fun Slider(label: String, valueText: String, fraction: Float, home: Float?, stepper: Boolean, onFraction: (Float) -> Unit, onStep: (Int) -> Unit) {
+    override fun Slider(label: String, valueText: String, fraction: Float, home: Float?, stepper: Boolean, detents: Int, onFraction: (Float) -> Unit, onStep: (Int) -> Unit) {
         val g = grid(); val c = colors()
         Column(Modifier.padding(vertical = g.lines(0.5f))) {
             Row(verticalAlignment = Alignment.CenterVertically) {

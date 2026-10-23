@@ -85,4 +85,5 @@ dependencies {
     testImplementation("io.github.takahirom.roborazzi:roborazzi-compose:1.77.0")
     testImplementation(composeBom)
     testImplementation("androidx.compose.ui:ui-test-junit4")
+    testImplementation("androidx.test:core:1.7.0")
 }

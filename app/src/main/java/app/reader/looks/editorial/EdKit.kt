@@ -303,7 +303,7 @@ object EditorialKit : Kit {
     }
 
     @Composable
-    override fun Slider(label: String, valueText: String, fraction: Float, home: Float?, stepper: Boolean, onFraction: (Float) -> Unit, onStep: (Int) -> Unit) {
+    override fun Slider(label: String, valueText: String, fraction: Float, home: Float?, stepper: Boolean, detents: Int, onFraction: (Float) -> Unit, onStep: (Int) -> Unit) {
         val c = colors()
         Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
             Row(Modifier.fillMaxWidth()) {

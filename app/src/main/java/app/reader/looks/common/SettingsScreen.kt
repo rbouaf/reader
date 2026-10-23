@@ -206,6 +206,7 @@ private fun DetentSlider(
         fraction = (value - min) / (max - min),
         home = (home - min) / (max - min),
         stepper = stepper,
+        detents = ((max - min) / detent).roundToInt(),
         onFraction = { f -> apply(min + f * (max - min), false) },
         onStep = { d -> apply(value + d * detent, true) },
     )

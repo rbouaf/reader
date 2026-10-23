@@ -39,6 +39,8 @@ interface Kit {
      * A slider row. [fraction] is 0..1; [home] is the neutral point (0..1) or null.
      * [onFraction] reports raw drag positions (the caller snaps and plays detents).
      * With [stepper], also draw − / + buttons that call [onStep] with -1 or +1.
+     * [detents] is how many steps the range has (e.g. 10 for warmth, 14 for size): draw that many
+     * graduations if the look draws any.
      */
     @Composable fun Slider(
         label: String,
@@ -46,6 +48,7 @@ interface Kit {
         fraction: Float,
         home: Float?,
         stepper: Boolean,
+        detents: Int,
         onFraction: (Float) -> Unit,
         onStep: (Int) -> Unit,
     )
@@ -58,6 +61,14 @@ interface Kit {
 
     /** A frame for the reading preview in Settings ([content] draws the sample page text). */
     @Composable fun PreviewFrame(content: @Composable () -> Unit)
+
+    /**
+     * A modal form with text fields (long-press → Edit details). Draw it like [Sheet]: same
+     * frame, the look's field style, a primary [saveLabel] button and a quiet Cancel.
+     * The default is a plain version; looks override it.
+     */
+    @Composable fun Form(title: String, subtitle: String?, fields: List<FormField>, saveLabel: String, onSave: () -> Unit, onDismiss: () -> Unit) =
+        app.reader.looks.common.PlainForm(title, subtitle, fields, saveLabel, onSave, onDismiss)
 
     /** A modal action sheet (long-press on a book). */
     @Composable fun Sheet(title: String, subtitle: String?, actions: List<SheetAction>, onDismiss: () -> Unit)
@@ -83,6 +94,10 @@ interface Kit {
 
 @Immutable
 data class ChoiceOption(val label: String, val font: FontFamily? = null)
+
+/** One text field in a [Kit.Form]. [hint] is quiet text under it (e.g. "Renames the file in the folder"). */
+@Immutable
+data class FormField(val label: String, val value: String, val hint: String? = null, val onChange: (String) -> Unit)
 
 @Immutable
 data class SheetAction(val label: String, val quiet: Boolean = false, val onClick: () -> Unit)
