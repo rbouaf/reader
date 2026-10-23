@@ -66,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.reader.looks.ChoiceOption
+import app.reader.looks.FormField
 import app.reader.looks.Kit
 import app.reader.looks.LookCard
 import app.reader.looks.SheetAction
@@ -312,7 +313,7 @@ object EditorialKit : Kit {
             }
             Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (stepper) StepButton("A−") { onStep(-1) }
-                Track(fraction, home, onFraction, Modifier.weight(1f).padding(top = if (stepper) 5.dp else 0.dp))
+                Track(fraction, home, detents, onFraction, Modifier.weight(1f).padding(top = if (stepper) 5.dp else 0.dp))
                 if (stepper) StepButton("A+") { onStep(1) }
             }
         }
@@ -320,7 +321,7 @@ object EditorialKit : Kit {
 
     /** A 2px track, ink up to the value and dashed after it; a slotted thumb; detent ticks and the home mark below. */
     @Composable
-    private fun Track(fraction: Float, home: Float?, onFraction: (Float) -> Unit, modifier: Modifier) {
+    private fun Track(fraction: Float, home: Float?, detents: Int, onFraction: (Float) -> Unit, modifier: Modifier) {
         val c = colors()
         val f = fraction.coerceIn(0f, 1f)
         Canvas(
@@ -342,8 +343,8 @@ object EditorialKit : Kit {
             val th = 2.dp.toPx()
             drawLine(c.rule, Offset(0f, cy), Offset(size.width, cy), th, pathEffect = PathEffect.dashPathEffect(floatArrayOf(3.dp.toPx(), 3.dp.toPx())))
             drawRect(c.ink, Offset(0f, cy - th / 2), Size(f * size.width, th))
-            // detent ticks and the home mark
-            val n = 10
+            // one tick per detent step (both ends included) and the home mark
+            val n = detents.coerceIn(1, 64)
             val hair = 1.dp.toPx().coerceAtLeast(1f)
             for (k in 0..n) drawRect(c.mute.copy(alpha = 0.7f), Offset(inset + span * k / n, size.height - 6.dp.toPx()), Size(hair, 6.dp.toPx()))
             if (home != null) {
@@ -457,17 +458,84 @@ object EditorialKit : Kit {
         }
     }
 
+    /**
+     * The sheet's frame and buttons around a column of entry fields: an italic label, then a
+     * Fragment Mono line in the preview frame's box (ink left edge, rule elsewhere), then the hint.
+     */
     @Composable
-    private fun SheetButton(a: SheetAction) {
+    override fun Form(title: String, subtitle: String?, fields: List<FormField>, saveLabel: String, onSave: () -> Unit, onDismiss: () -> Unit) {
+        Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+            Sized { _, _ ->
+                val c = colors()
+                val insets = WindowInsets.safeDrawing.asPaddingValues()
+                Box(
+                    Modifier.fillMaxSize().background(c.paper.copy(alpha = 0.7f))
+                        .clickable(remember { MutableInteractionSource() }, null, onClick = onDismiss)
+                        .imePadding(),
+                ) {
+                    Column(
+                        Modifier.align(Alignment.BottomCenter).widthIn(max = 520.dp).fillMaxWidth()
+                            .padding(top = insets.calculateTopPadding())
+                            .background(c.paper).edges(top = c.ink, topW = 1.5.dp)
+                            .clickable(remember { MutableInteractionSource() }, null) {}
+                            .verticalScroll(rememberScrollState())
+                            .padding(start = 16.dp, end = 16.dp, top = 20.dp, bottom = 12.dp + insets.calculateBottomPadding()),
+                    ) {
+                        Text(title, style = ET.disp(c, 24.sp, 1.15f), modifier = Modifier.padding(end = 20.dp))
+                        if (subtitle != null) Text(subtitle, style = ET.mono(c, 11.5.sp, 1.4f, c.mute), modifier = Modifier.padding(top = 6.dp))
+                        Spacer(Modifier.height(8.dp))
+                        fields.forEach { FormEntry(it) }
+                        Spacer(Modifier.height(14.dp))
+                        SheetButton(SheetAction(saveLabel, onClick = onSave), primary = true)
+                        SheetButton(SheetAction("Cancel", quiet = true, onClick = onDismiss))
+                    }
+                }
+            }
+        }
+    }
+
+    @Composable
+    private fun FormEntry(f: FormField) {
+        val c = colors()
+        Column(Modifier.fillMaxWidth().padding(top = 14.dp)) {
+            Text(f.label, style = ET.it(c, 17.sp, 1.2f, c.ink))
+            BasicTextField(
+                f.value, f.onChange,
+                singleLine = true,
+                textStyle = ET.mono(c, 14.sp, 1.3f),
+                cursorBrush = SolidColor(c.ink),
+                modifier = Modifier.padding(top = 6.dp).fillMaxWidth().heightIn(min = 48.dp)
+                    .background(c.paper)
+                    .edges(top = c.rule, right = c.rule, bottom = c.rule, left = c.ink, leftW = 1.5.dp),
+                decorationBox = { inner ->
+                    Box(Modifier.padding(horizontal = 12.dp, vertical = 14.dp), contentAlignment = Alignment.CenterStart) { inner() }
+                },
+            )
+            if (f.hint != null) Hint(f.hint, Modifier.padding(top = 6.dp))
+        }
+    }
+
+    @Composable
+    private fun SheetButton(a: SheetAction, primary: Boolean = false) {
         val c = colors()
         val (src, pressed) = rememberPress()
         Box(
-            Modifier.fillMaxWidth().heightIn(min = 52.dp).background(if (pressed) c.ink else c.paper).edges(top = c.rule)
+            Modifier.fillMaxWidth().heightIn(min = 52.dp).background(if (pressed) c.ink else c.paper)
+                .then(if (primary) Modifier.edges(top = c.ink, topW = 1.5.dp) else Modifier.edges(top = c.rule))
                 .clickable(src, null, onClick = a.onClick).padding(horizontal = 2.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
             val fg = if (pressed) c.paper else if (a.quiet) c.mute else c.ink
-            Text(a.label, style = if (a.quiet) ET.it(c, 19.sp, 1.2f, fg) else ET.disp(c, 19.sp, 1.2f, fg, FontWeight.Normal))
+            Text(
+                a.label,
+                style = when {
+                    a.quiet -> ET.it(c, 19.sp, 1.2f, fg)
+                    primary -> ET.disp(c, 21.sp, 1.2f, fg, FontWeight.SemiBold)
+                    else -> ET.disp(c, 19.sp, 1.2f, fg, FontWeight.Normal)
+                },
+            )
+            // the primary action carries the Continue arrow
+            if (primary) Box(Modifier.align(Alignment.CenterEnd).padding(end = 4.dp)) { Arrow(fg) }
         }
     }
 
@@ -519,7 +587,9 @@ object EditorialKit : Kit {
         CompositionLocalProvider(LocalColors provides c) {
             Row(
                 Modifier.fillMaxWidth().background(if (pressed) c0.ink else c0.paper)
-                    .drawBehind { dashedH(c0.rule, size.height - 0.5f) }
+                    // a rule above and below: the top one sits on the previous row's bottom rule,
+                    // so only the first row shows it as a new line
+                    .drawBehind { dashedH(c0.rule, -0.5f); dashedH(c0.rule, size.height - 0.5f) }
                     .clickable(src, null, onClick = onClick)
                     .heightIn(min = 52.dp).padding(vertical = 11.dp).padding(start = (18 * depth).dp),
                 verticalAlignment = Alignment.Top,

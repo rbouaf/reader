@@ -71,7 +71,7 @@ fun EditorialChrome(ui: ChromeUi, on: ChromeActions) {
                 .padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 14.dp + insets.calculateBottomPadding()),
         ) {
             if (!tablet) Tools(ui, on, Modifier.padding(bottom = 10.dp))
-            Info(ui, on, tablet)
+            Info(ui, on)
             ScrubStrip(ui, on, Modifier.padding(top = 10.dp))
         }
 
@@ -100,14 +100,16 @@ private fun Tools(ui: ChromeUi, on: ChromeActions, modifier: Modifier = Modifier
 }
 
 @Composable
-private fun Info(ui: ChromeUi, on: ChromeActions, wide: Boolean) {
+private fun Info(ui: ChromeUi, on: ChromeActions) {
     val c = colors()
+    // one line at every width: the chapter takes the slack (up to two lines, then an ellipsis),
+    // the page count and the return button keep their natural width
     Row(
         Modifier.fillMaxWidth().heightIn(min = 28.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(14.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(ui.chapter ?: ui.title, style = ET.mono(c, 12.sp, 1.2f), maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
+        Text(ui.chapter ?: ui.title, style = ET.mono(c, 12.sp, 1.3f), maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
         Text(
             buildAnnotatedString {
                 withStyle(SpanStyle(fontFamily = Fonts.bodoniText, fontWeight = FontWeight.SemiBold, fontSize = 24.sp, color = c.ink)) { append(ui.pageLabel()) }
@@ -115,11 +117,7 @@ private fun Info(ui: ChromeUi, on: ChromeActions, wide: Boolean) {
             },
             style = ET.mono(c, 11.5.sp, 1f, c.mute), maxLines = 1, softWrap = false,
         )
-        if (wide) ui.returnPage?.takeIf { it != ui.page }?.let { r -> EdButton("Back to page $r", on.goBackToMark, dashed = true, size = 12.sp) }
-    }
-    // on phones the return button wraps under the chapter line, as the mockup's flex row does
-    if (!wide) ui.returnPage?.takeIf { it != ui.page }?.let { r ->
-        EdButton("Back to page $r", on.goBackToMark, Modifier.padding(top = 6.dp), dashed = true, size = 12.sp)
+        ui.returnPage?.takeIf { it != ui.page }?.let { r -> EdButton("Back to page $r", on.goBackToMark, dashed = true, size = 12.sp) }
     }
 }
 
