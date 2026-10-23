@@ -67,6 +67,8 @@ data class ReaderUi(
     val canReadAloud: Boolean = false,
     /** Text size while a pinch is resizing it, for the on-screen readout. */
     val zoomSize: Int? = null,
+    /** The title inside the file (the shown [title] may be the user's edit). */
+    val docTitle: String = "",
     /** A PDF shown as re-wrapped text (text wrap zoom). */
     val textView: Boolean = false,
     /** A short message over the page ("Preparing text view…"). */
@@ -74,7 +76,7 @@ data class ReaderUi(
 ) {
     val chapter get() = tocIndex?.let { toc.getOrNull(it)?.title }
     /** Top-level chapters only, for "chapter 3 of 7": front and back matter don't count. */
-    val topLevel get() = toc.filter { it.depth == 0 && !isMatter(it.title, title) }
+    val topLevel get() = toc.filter { it.depth == 0 && !isMatter(it.title, title) && !isMatter(it.title, docTitle) }
 }
 
 private val MATTER = Regex(
@@ -126,6 +128,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     var key: String? = null
         private set
+    private var openedUri: Uri? = null
     private var opened = false
     private var lastLocator: Locator? = null
     private var ended = false
@@ -145,6 +148,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             val book = bookKey?.let { awaitBook(it) }
             val uri = book?.uri ?: external
             if (uri == null) { fail("This book isn't in the library any more."); return@launch }
+            openedUri = uri
             val format = book?.format ?: Format.of(external?.lastPathSegment ?: "") ?: guessFormat(uri)
             val title = book?.title ?: Metadata.fromFileName(external?.lastPathSegment?.substringAfterLast('/') ?: "Book").title ?: "Book"
             _ui.update { it.copy(title = title, author = book?.author, format = format) }
@@ -159,7 +163,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 _doc.value = doc
                 if (doc is Doc.Reflow) {
                     val pubTitle = doc.publication.metadata.title
-                    _ui.update { it.copy(title = book?.title ?: pubTitle ?: title, canReadAloud = tts.supported(doc)) }
+                    _ui.update { it.copy(title = book?.title ?: pubTitle ?: title, docTitle = pubTitle ?: "", canReadAloud = tts.supported(doc)) }
                 } else {
                     _ui.update { it.copy(canReadAloud = true) }
                 }
@@ -477,7 +481,10 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         viewModelScope.launch {
             try {
                 notice("Preparing text view…", 0)
-                val out = File(app.cacheDir, "pdftext/${book?.key ?: "x"}-${book?.size ?: 0}-${book?.modified ?: 0}.epub")
+                // books outside the library (opened from a file manager) are named by their uri, never shared
+                val name = if (book != null) "${book.key}-${book.size}-${book.modified}"
+                    else "ext-" + Book.keyOf(openedUri.toString()) + "-" + pdf.doc.pageCount
+                val out = File(app.cacheDir, "pdftext/$name.epub")
                 val file = withContext(Dispatchers.IO) {
                     PdfText.build(pdf.doc, _ui.value.title, _ui.value.author, _ui.value.toc, out) { p ->
                         _ui.update { it.copy(notice = "Preparing text view… ${(p * 100).toInt()}%") }
