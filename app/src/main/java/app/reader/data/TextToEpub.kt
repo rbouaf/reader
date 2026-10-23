@@ -95,6 +95,22 @@ object TextToEpub {
         val lines = paragraphs.flatMap { it.lines() }
         val wrapped = lines.size > 20 && lines.count { it.length in 50..80 } > lines.size * 0.5
 
+        fun isHeadingLine(p: String) = p.trim().let { '\n' !in it && it.length <= 70 && chapterLine.matches(it) }
+        // A heading only counts if real text follows before the next one: that skips the
+        // book's own contents list ("CHAPTER 1. Loomings." … one per line).
+        val heading = BooleanArray(paragraphs.size)
+        val lastAt = mutableMapOf<String, Int>()
+        paragraphs.forEachIndexed { i, p -> if (isHeadingLine(p)) lastAt[p.trim().lowercase()] = i }
+        for (i in paragraphs.indices) {
+            if (!isHeadingLine(paragraphs[i])) continue
+            // the same line again later means this one is an entry in the book's own contents
+            if (lastAt[paragraphs[i].trim().lowercase()] != i) continue
+            var body = 0
+            var j = i + 1
+            while (j < paragraphs.size && !isHeadingLine(paragraphs[j]) && body < 400) { body += paragraphs[j].length; j++ }
+            heading[i] = body >= 400
+        }
+
         val chapters = mutableListOf<Chapter>()
         var title: String? = null
         val part = StringBuilder()
@@ -102,9 +118,9 @@ object TextToEpub {
             if (part.isNotBlank()) chapters += Chapter(title, part.toString())
             part.clear()
         }
-        for (p in paragraphs) {
+        for ((i, p) in paragraphs.withIndex()) {
             val oneLine = p.trim()
-            if ('\n' !in oneLine && oneLine.length <= 70 && chapterLine.matches(oneLine)) {
+            if (heading[i]) {
                 flush()
                 title = oneLine
                 part.append("<h2>").append(esc(oneLine)).append("</h2>\n")
