@@ -33,6 +33,7 @@ import org.readium.r2.navigator.preferences.ColumnCount
 import org.readium.r2.navigator.preferences.FontFamily
 import org.readium.r2.navigator.preferences.ImageFilter
 import org.readium.r2.navigator.preferences.TextAlign
+import org.readium.r2.navigator.preferences.Theme
 import org.readium.r2.shared.ExperimentalReadiumApi
 import org.readium.r2.shared.publication.Locator
 import org.readium.r2.shared.util.AbsoluteUrl
@@ -65,6 +66,8 @@ fun ReadingStyle.toPreferences() = EpubPreferences(
     textAlign = if (justify) TextAlign.JUSTIFY else TextAlign.START,
     hyphens = hyphens,
     columnCount = when (spread) { Spread.Auto -> ColumnCount.AUTO; Spread.One -> ColumnCount.ONE; Spread.Two -> ColumnCount.TWO },
+    // Readium only filters images in its dark theme; our colours still override the theme's
+    theme = if (dark) Theme.DARK else Theme.LIGHT,
     imageFilter = if (dark) ImageFilter.DARKEN else null,
     publisherStyles = false,
     scroll = false,

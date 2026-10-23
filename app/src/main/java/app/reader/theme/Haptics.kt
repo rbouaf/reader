@@ -103,7 +103,7 @@ class Haptics(
         if (!primitives) return null
         val c = VibrationEffect.startComposition()
         parts.forEachIndexed { i, (p, scale) -> c.addPrimitive(p, scale, if (i == 0) 0 else 40) }
-        v.vibrate(c.compose())
+        runCatching { v.vibrate(c.compose()) }
         return Unit
     }
 

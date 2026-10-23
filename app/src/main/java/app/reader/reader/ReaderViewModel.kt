@@ -192,9 +192,20 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         byResource.forEach { starts += n; n += it.size }
         val initial = state?.locator?.let { runCatching { Locator.fromJSON(JSONObject(it)) }.getOrNull() }
             ?.takeIf { it.locations.position != null || it.locations.progression != null }
+        val bytes = mutableMapOf<Int, ByteArray?>()
         val toc = flatten(publication.tableOfContents).mapNotNull { (link, depth) ->
-            val idx = publication.readingOrder.indexOfFirstWithHref(link.url()) ?: return@mapNotNull null
-            TocEntry(link.title?.trim()?.ifEmpty { null } ?: "Untitled", depth, starts.getOrNull(idx), link)
+            val url = link.url()
+            val idx = publication.readingOrder.indexOfFirstWithHref(url) ?: return@mapNotNull null
+            val start = starts.getOrNull(idx) ?: return@mapNotNull null
+            // Chapters often share one file and differ only by #anchor: place them by where the
+            // anchor sits in the file (Readium counts positions by bytes, so this lines up).
+            val page = url.fragment?.let { frag ->
+                val data = bytes.getOrPut(idx) { publication.get(publication.readingOrder[idx])?.read()?.getOrNull() }
+                val at = data?.let { anchorOffset(it, frag) }
+                if (data == null || at == null) null
+                else start + (byResource[idx].size * at.toDouble() / data.size).toInt().coerceIn(0, maxOf(0, byResource[idx].size - 1))
+            } ?: start
+            TocEntry(link.title?.trim()?.ifEmpty { null } ?: "Untitled", depth, page, link)
         }
         _ui.update {
             it.copy(
@@ -204,6 +215,15 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             )
         }
         return Doc.Reflow(publication, EpubNavigatorFactory(publication), positions, starts, initial)
+    }
+
+    private fun anchorOffset(data: ByteArray, id: String): Int? {
+        val text = String(data, Charsets.ISO_8859_1)
+        for (q in listOf("id=\"$id\"", "id='$id'", "name=\"$id\"")) {
+            val i = text.indexOf(q)
+            if (i >= 0) return i
+        }
+        return null
     }
 
     private fun flatten(links: List<Link>, depth: Int = 0): List<Pair<Link, Int>> =
@@ -248,6 +268,9 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         touch()
         scheduleSave(locator)
     }
+
+    /** The 1-based page of a locator in a reflowable book. */
+    fun pageFor(l: Locator): Int? = (_doc.value as? Doc.Reflow)?.let { pageOf(it, l) }
 
     private fun pageOf(d: Doc.Reflow, l: Locator): Int {
         l.locations.position?.let { return it.coerceIn(1, d.positions.size.coerceAtLeast(1)) }

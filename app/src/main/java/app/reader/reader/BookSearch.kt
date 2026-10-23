@@ -71,12 +71,12 @@ class BookSearch(private val vm: ReaderViewModel, private val scope: CoroutineSc
     fun clear() { job?.cancel(); _highlight.value = null }
 
     private fun hitOf(d: Doc.Reflow, l: Locator): SearchHit {
-        val page = l.locations.position
+        val page = l.locations.position ?: vm.pageFor(l)
         val chapter = vm.ui.value.toc.lastOrNull { e -> e.page != null && page != null && e.page <= page }?.title ?: l.title
         return SearchHit(
-            before = l.text.before.orEmpty().replace('\n', ' ').takeLast(40).trimStart(),
-            match = l.text.highlight.orEmpty(),
-            after = l.text.after.orEmpty().replace('\n', ' ').take(40).trimEnd(),
+            before = l.text.before.orEmpty().squash().takeLast(40).trimStart(),
+            match = l.text.highlight.orEmpty().squash(),
+            after = l.text.after.orEmpty().squash().take(40).trimEnd(),
             chapter = chapter, page = page, target = l,
         )
     }
@@ -85,12 +85,14 @@ class BookSearch(private val vm: ReaderViewModel, private val scope: CoroutineSc
         if (start < 0 || start >= text.length) return SearchHit("", "", "", null, page, target)
         val end = (start + len).coerceAtMost(text.length)
         return SearchHit(
-            before = text.substring((start - 40).coerceAtLeast(0), start).replace('\n', ' ').trimStart(),
+            before = text.substring((start - 40).coerceAtLeast(0), start).squash().trimStart(),
             match = text.substring(start, end),
-            after = text.substring(end, (end + 40).coerceAtMost(text.length)).replace('\n', ' ').trimEnd(),
+            after = text.substring(end, (end + 40).coerceAtMost(text.length)).squash().trimEnd(),
             chapter = null, page = page, target = target,
         )
     }
+
+    private fun String.squash() = replace(Regex("\\s+"), " ")
 
     companion object { const val MAX = 500 }
 }

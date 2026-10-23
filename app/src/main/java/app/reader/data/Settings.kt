@@ -77,10 +77,11 @@ class SettingsRepository(private val context: Context, scope: CoroutineScope) {
         scope.launch { context.store.edit { p -> p[KEY] = json.encodeToString(f(decode(p[KEY]))) } }
     }
 
-    private fun decode(s: String?) = s?.let { runCatching { json.decodeFromString<AppSettings>(it) }.getOrNull() } ?: initial
+    private fun decode(s: String?, fallback: AppSettings = initial) =
+        s?.let { runCatching { json.decodeFromString<AppSettings>(it) }.getOrNull() } ?: fallback
 
     private suspend fun read(): AppSettings {
-        val stored = decode(context.store.data.first()[KEY])
+        val stored = decode(context.store.data.first()[KEY], AppSettings())
         if (stored.deviceId.isNotEmpty()) return stored
         // A stable id per install, readable in the sidecar file names.
         val slug = Build.MODEL.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-').ifEmpty { "device" }
