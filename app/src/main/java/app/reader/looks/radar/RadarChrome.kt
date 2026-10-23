@@ -36,6 +36,7 @@ import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -81,12 +82,25 @@ fun RadarChrome(ui: ChromeUi, on: ChromeActions) {
                 .padding(start = if (tablet) 20.dp else 16.dp, end = if (tablet) 20.dp else 16.dp, top = 10.dp, bottom = 12.dp + insets.calculateBottomPadding()),
         ) {
             Tools(ui, on)
-            Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                val chs = ui.chapterPages.filter { it > 1 }.map { ui.fractionOf(it) }
-                PolarDial(ui.progress, chs)
-                Column(Modifier.weight(1f)) {
-                    Info(ui, on)
-                    ScaleScrubber(ui, on, chs, Modifier.padding(top = 4.dp))
+            val chs = ui.chapterPages.filter { it > 1 }.map { ui.fractionOf(it) }
+            if (tablet) {
+                // the mockup's grid: the dial spans the info line and the scale
+                Row(Modifier.padding(top = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    PolarDial(ui.progress, chs)
+                    Column(Modifier.weight(1f)) {
+                        Info(ui, on)
+                        ScaleScrubber(ui, on, chs, Modifier.padding(top = 4.dp))
+                    }
+                }
+            } else {
+                // phones: the chapter gets its own line; the dial spans page count + return and the scale
+                Chapter(ui, Modifier.padding(top = 8.dp))
+                Row(Modifier.padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                    PolarDial(ui.progress, chs)
+                    Column(Modifier.weight(1f)) {
+                        Info(ui, on, chapter = false)
+                        ScaleScrubber(ui, on, chs, Modifier.padding(top = 4.dp))
+                    }
                 }
             }
         }
@@ -112,20 +126,25 @@ private fun Tools(ui: ChromeUi, on: ChromeActions) {
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Info(ui: ChromeUi, on: ChromeActions) {
+private fun Chapter(ui: ChromeUi, modifier: Modifier = Modifier) {
     val c = colors()
-    FlowRow(
+    Text(
+        ui.chapter ?: ui.title, style = RS.mono(c, 12.5.sp, 300, c.mute, lh = 18.sp, ls = (-0.015).em),
+        maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = modifier,
+    )
+}
+
+/** One line, never wrapping: the chapter (ellipsized, unless it has its own line), page x of y, the return button. */
+@Composable
+private fun Info(ui: ChromeUi, on: ChromeActions, chapter: Boolean = true) {
+    val c = colors()
+    Row(
         Modifier.fillMaxWidth().heightIn(min = 28.dp),
         horizontalArrangement = Arrangement.spacedBy(14.dp),
-        verticalArrangement = Arrangement.Center,
-        itemVerticalAlignment = Alignment.CenterVertically,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            ui.chapter ?: ui.title, style = RS.mono(c, 12.5.sp, 300, c.mute, lh = 18.sp, ls = (-0.015).em),
-            maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f).widthIn(min = 80.dp),
-        )
+        if (chapter) Chapter(ui, Modifier.weight(1f))
         Text(
             buildAnnotatedString {
                 withStyle(SpanStyle(fontFamily = app.reader.theme.Fonts.majorMono, fontSize = 18.sp, color = c.ink, letterSpacing = (-0.04).em, fontWeight = FontWeight.Normal)) {
@@ -136,16 +155,29 @@ private fun Info(ui: ChromeUi, on: ChromeActions) {
             style = RS.mono(c, 12.sp, 300, c.mute, lh = 22.sp), maxLines = 1,
         )
         ui.returnPage?.takeIf { it != ui.page }?.let { r ->
-            // a 36dp dashed box (the mockup's .ret) inside a 44dp touch target
-            val src = remember { MutableInteractionSource() }
-            val pressed by src.collectIsPressedAsState()
-            Box(Modifier.height(44.dp).clickable(src, null, onClick = on.goBackToMark), contentAlignment = Alignment.Center) {
-                Box(
-                    Modifier.height(36.dp).background(if (pressed) c.ink else c.paper).dashedBox(c.ink).padding(horizontal = 10.dp),
-                    contentAlignment = Alignment.Center,
-                ) { Text("Back to page $r", style = RS.mono(c, 12.sp, color = if (pressed) c.paper else c.ink, lh = 16.sp), maxLines = 1) }
+            if (chapter) ReturnBtn("Back to page $r", on.goBackToMark)
+            else BoxWithConstraints(Modifier.weight(1f), contentAlignment = Alignment.CenterEnd) {
+                // narrow phones: drop to "Page N" rather than clip the label
+                val style = RS.mono(c, 12.sp, lh = 16.sp)
+                val full = "Back to page $r"
+                val needed = with(LocalDensity.current) { rememberTextMeasurer().measure(full, style).size.width.toDp() } + 22.dp
+                ReturnBtn(if (needed <= maxWidth) full else "Page $r", on.goBackToMark)
             }
         }
+    }
+}
+
+/** The mockup's .ret: a 36dp dashed box inside a 44dp touch target. */
+@Composable
+private fun ReturnBtn(label: String, onClick: () -> Unit) {
+    val c = colors()
+    val src = remember { MutableInteractionSource() }
+    val pressed by src.collectIsPressedAsState()
+    Box(Modifier.height(44.dp).clickable(src, null, onClick = onClick), contentAlignment = Alignment.Center) {
+        Box(
+            Modifier.height(36.dp).background(if (pressed) c.ink else c.paper).dashedBox(c.ink).padding(horizontal = 10.dp),
+            contentAlignment = Alignment.Center,
+        ) { Text(label, style = RS.mono(c, 12.sp, color = if (pressed) c.paper else c.ink, lh = 16.sp), maxLines = 1, softWrap = false) }
     }
 }
 
