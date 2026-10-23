@@ -73,8 +73,9 @@ import app.reader.theme.LocalColors
 object ReadoutKit : Kit {
 
     @Composable
-    private fun Sized(content: @Composable (tablet: Boolean, twoColumn: Boolean) -> Unit) {
-        BoxWithConstraints(Modifier.fillMaxSize().background(colors().paper)) {
+    private fun Sized(ground: Boolean = true, content: @Composable (tablet: Boolean, twoColumn: Boolean) -> Unit) {
+        // dialogs pass ground = false so their translucent scrim shows the library beneath
+        BoxWithConstraints(Modifier.fillMaxSize().then(if (ground) Modifier.background(colors().paper) else Modifier)) {
             val g = Grid.of(maxWidth)
             CompositionLocalProvider(LocalGrid provides g) {
                 content(maxWidth >= 700.dp, maxWidth >= 1000.dp && maxWidth > maxHeight)
@@ -295,7 +296,7 @@ object ReadoutKit : Kit {
     @Composable
     override fun Sheet(title: String, subtitle: String?, actions: List<SheetAction>, onDismiss: () -> Unit) {
         Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-            Sized { tablet, _ ->
+            Sized(ground = false) { tablet, _ ->
                 val g = grid(); val c = colors()
                 val insets = WindowInsets.safeDrawing.asPaddingValues()
                 Box(Modifier.fillMaxSize().background(c.paper.copy(alpha = 0.75f)).clickable(remember { MutableInteractionSource() }, null, onClick = onDismiss)) {
@@ -318,7 +319,7 @@ object ReadoutKit : Kit {
     @Composable
     override fun Form(title: String, subtitle: String?, fields: List<FormField>, saveLabel: String, onSave: () -> Unit, onDismiss: () -> Unit) {
         Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-            Sized { tablet, _ ->
+            Sized(ground = false) { tablet, _ ->
                 val g = grid(); val c = colors()
                 val insets = WindowInsets.safeDrawing.asPaddingValues()
                 Box(Modifier.fillMaxSize().background(c.paper.copy(alpha = 0.75f)).clickable(remember { MutableInteractionSource() }, null, onClick = onDismiss).imePadding()) {
