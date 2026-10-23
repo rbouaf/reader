@@ -120,6 +120,8 @@ private fun Head(ui: LibraryUi, on: LibraryActions, appName: String) {
             val n = ui.counts
             Text(
                 when {
+                    // the record box below spells the error out; the status line just names it
+                    ui.error != null && ui.current == null -> "read error"
                     ui.error != null -> ui.error
                     !ui.loaded -> "scanning…"
                     else -> "${n.total} files, ${n.open} open, ${n.new} new, ${n.finished} done" + if (ui.scanning) ", rescanning" else ""
@@ -127,7 +129,7 @@ private fun Head(ui: LibraryUi, on: LibraryActions, appName: String) {
                 style = RT.base(g, c),
             )
         }
-        field("sort by") {
+        if (ui.loaded && !ui.isEmpty && (ui.error == null || ui.current != null)) field("sort by") {
             FlowRow(Modifier.offset(y = (-12).dp), horizontalArrangement = Arrangement.spacedBy(g.ch(1))) {
                 listOf(Sort.Recent to "recent", Sort.Title to "title", Sort.Author to "author").forEach { (s, label) ->
                     val sel = ui.sort == s
@@ -394,6 +396,13 @@ private fun IndexRow(b: Book, shape: Shape, on: LibraryActions) {
 private fun Summary(ui: LibraryUi) {
     val g = grid(); val c = colors()
     val n = ui.counts
+    // the whole folder as one channel: every day of reading in every book, summed into one climb
+    val act = remember(ui.all) { folderActivity(ui.all) }
+    val booksRead = if (act.booksRead < 10f) "%.1f".format(act.booksRead) else "%.0f".format(act.booksRead)
+    val formats = Format.entries.mapNotNull { f -> n.byFormat[f]?.let { f.label to it } }
+    // labels fit the longest ("folder size"); values right-align in a column as wide as the widest count
+    val kw = g.ch(11)
+    val vw = g.ch(maxOf(3, (listOf(n.open, n.new, n.finished, act.sittings) + formats.map { it.second }).maxOf { "$it".length }, booksRead.length))
     Column(Modifier.padding(top = g.lines(2))) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Summary", style = RT.title(g, c))
@@ -401,45 +410,51 @@ private fun Summary(ui: LibraryUi) {
             TextRule(Modifier.weight(1f))
         }
         Spacer(Modifier.height(g.lines(0.5f)))
+        @Composable fun key(k: String) = Text(k, style = RT.label(g, c), maxLines = 1, softWrap = false, modifier = Modifier.width(kw))
+        @Composable fun value(v: String) = Text(v, style = RT.title(g, c), textAlign = TextAlign.End, maxLines = 1, softWrap = false, modifier = Modifier.width(vw))
         @Composable fun line(k: String, v: Int) {
             Row {
-                Text(k, style = RT.label(g, c), modifier = Modifier.width(g.ch(10)))
+                key(k)
                 Spacer(Modifier.width(g.ch(1)))
-                Text("$v", style = RT.title(g, c), textAlign = TextAlign.End, modifier = Modifier.width(g.ch(3)))
+                value("$v")
                 Spacer(Modifier.width(g.ch(1)))
-                Text(
-                    buildAnnotatedString {
-                        append("/".repeat(v))
-                        withStyle(SpanStyle(color = c.mute)) { append(".".repeat((n.total - v).coerceAtLeast(0))) }
-                    },
-                    style = RT.base(g, c), maxLines = 1, softWrap = false, overflow = TextOverflow.Clip, modifier = Modifier.weight(1f),
-                )
+                // one slash per book while they fit; past that, scaled to the width so the bars still compare
+                BoxWithConstraints(Modifier.weight(1f)) {
+                    val cells = (maxWidth / g.chDp).toInt().coerceAtLeast(1)
+                    val (on, off) = if (n.total <= cells) v to (n.total - v).coerceAtLeast(0)
+                        else Math.round(v.toFloat() / n.total * cells).let { it to cells - it }
+                    Text(
+                        buildAnnotatedString {
+                            append("/".repeat(on))
+                            withStyle(SpanStyle(color = c.mute)) { append(".".repeat(off)) }
+                        },
+                        style = RT.base(g, c), maxLines = 1, softWrap = false, overflow = TextOverflow.Clip,
+                    )
+                }
             }
         }
         line("open", n.open); line("new", n.new); line("finished", n.finished)
         Spacer(Modifier.height(g.lines(0.5f)))
-        // the whole folder as one channel: every day of reading in every book, summed into one climb
-        val act = remember(ui.all) { folderActivity(ui.all) }
         Row {
             Column {
                 @Composable fun count(k: String, v: String) = Row {
-                    Text(k, style = RT.label(g, c), modifier = Modifier.width(g.ch(10)))
+                    key(k)
                     Spacer(Modifier.width(g.ch(1)))
-                    Text(v, style = RT.title(g, c), textAlign = TextAlign.End, maxLines = 1, softWrap = false, modifier = Modifier.width(g.ch(3)))
+                    value(v)
                 }
                 count("sittings", "${act.sittings}")
-                count("books read", "%.1f".format(act.booksRead))
+                count("books read", booksRead)
             }
             Spacer(Modifier.width(g.ch(1)))
             FolderTrace(act, Modifier.weight(1f))
         }
         Spacer(Modifier.height(g.lines(0.5f)))
-        Format.entries.forEach { f -> n.byFormat[f]?.let { line(f.label, it) } }
+        formats.forEach { (k, v) -> line(k, v) }
         Spacer(Modifier.height(g.lines(0.5f)))
         Row {
-            Text("folder size", style = RT.label(g, c), modifier = Modifier.width(g.ch(10)))
+            key("folder size")
             Spacer(Modifier.width(g.ch(1)))
-            Text(formatSize(n.bytes), style = RT.title(g, c))
+            Text(formatSize(n.bytes), style = RT.title(g, c), maxLines = 1, softWrap = false)
         }
     }
 }
