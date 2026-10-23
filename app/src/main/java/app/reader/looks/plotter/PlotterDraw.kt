@@ -84,8 +84,8 @@ object PT {
         lineHeightStyle = trim, platformStyle = platform, letterSpacing = (-0.005).em,
     )
 
-    /** `.lb`: the italic, lowercase, muted label. */
-    fun label(c: Colors) = mono(10.5.sp, c.mute, italic = true)
+    /** `.lb`: the italic, lowercase, muted label, `line-height: 1`. */
+    fun label(c: Colors) = mono(10.5.sp, c.mute, italic = true, lh = 10.5.sp)
 }
 
 /**
@@ -99,6 +99,21 @@ fun Modifier.trimText(fontSize: TextUnit, top: Float, bottom: Float) = layout { 
     val px = fontSize.toPx()
     val t = (top * px).roundToInt(); val b = (bottom * px).roundToInt()
     layout(p.width, (p.height - t - b).coerceAtLeast(0)) { p.place(0, -t) }
+}
+
+/**
+ * A CSS line box. Compose keeps the font's full height (ascent + descent: 1.30em for both
+ * Instrument Serif and DM Mono) around the first and last lines even when [lineHeight] (a ratio
+ * of the size) is smaller, where the browser shrinks the box to lines × line-height, the
+ * glyphs centred. Trim the overhang evenly so boxes, and the glyphs in them, sit where they do in
+ * the mockup; [marginBottom] adds a negative CSS bottom margin (`margin: 2px 0 -4px`).
+ */
+fun Modifier.cssLines(fontSize: TextUnit, lineHeight: Float, marginBottom: Dp = 0.dp): Modifier {
+    val over = ((1.30f - lineHeight) / 2).coerceAtLeast(0f)
+    return trimText(fontSize, over, over).then(if (marginBottom > 0.dp) Modifier.layout { m, c ->
+        val p = m.measure(c)
+        layout(p.width, (p.height - marginBottom.roundToPx()).coerceAtLeast(0)) { p.place(0, 0) }
+    } else Modifier)
 }
 
 // ---------------- line work ----------------
