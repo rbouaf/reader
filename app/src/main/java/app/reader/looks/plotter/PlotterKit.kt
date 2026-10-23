@@ -7,6 +7,7 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -18,6 +19,9 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.only
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.calculateEndPadding
 import androidx.compose.foundation.layout.calculateStartPadding
@@ -70,6 +74,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import app.reader.looks.ChoiceOption
+import app.reader.looks.FormField
 import app.reader.looks.Kit
 import app.reader.looks.LookCard
 import app.reader.looks.SheetAction
@@ -297,7 +302,7 @@ object PlotterKit : Kit {
             }
             Row(Modifier.padding(top = 4.dp), verticalAlignment = Alignment.Top) {
                 if (stepper) { StepButton("A−") { onStep(-1) }; Spacer(Modifier.width(12.dp)) }
-                Track(fraction, home, onFraction, Modifier.weight(1f))
+                Track(fraction, home, detents, onFraction, Modifier.weight(1f))
                 if (stepper) { Spacer(Modifier.width(12.dp)); StepButton("A+") { onStep(1) } }
             }
         }
@@ -319,7 +324,7 @@ object PlotterKit : Kit {
      * thumb with a centre line, graduations underneath and a small arrowhead at the neutral point.
      */
     @Composable
-    private fun Track(fraction: Float, home: Float?, onFraction: (Float) -> Unit, modifier: Modifier) {
+    private fun Track(fraction: Float, home: Float?, detents: Int, onFraction: (Float) -> Unit, modifier: Modifier) {
         val c = colors()
         Canvas(
             modifier.height(34.dp + 12.dp + 8.dp)
@@ -332,11 +337,11 @@ object PlotterKit : Kit {
             val tx = 9.dp.toPx() + fraction.coerceIn(0f, 1f) * (w - 18.dp.toPx())
             hLine(c.ink, 0f, w, cy, hl)
             drawRect(c.ink, Offset(0f, snap(cy, hv)), Size(tx, hv))
-            // graduations: ten intervals, inset 7dp each side
-            val t0 = 7.dp.toPx(); val t1 = w - 7.dp.toPx()
+            // graduations: one per detent, under the thumb centre at each snap position
+            val t0 = 9.dp.toPx(); val t1 = w - 9.dp.toPx(); val n = detents.coerceAtLeast(1)
             val gy1 = 34.dp.toPx() + 12.dp.toPx(); val gy0 = gy1 - 6.dp.toPx()
             val tick = c.ink.copy(alpha = 0.75f)
-            for (i in 0..10) vLine(tick, t0 + (t1 - t0) * i / 10f, gy0, gy1, hl)
+            for (i in 0..n) vLine(tick, t0 + (t1 - t0) * i / n, gy0, gy1, hl)
             if (home != null) {
                 val hx = t0 + (t1 - t0) * home
                 val tri = Path().apply { moveTo(hx, gy1 + 2.dp.toPx()); lineTo(hx + 4.dp.toPx(), gy1 + 7.dp.toPx()); lineTo(hx - 4.dp.toPx(), gy1 + 7.dp.toPx()); close() }
@@ -416,7 +421,7 @@ object PlotterKit : Kit {
                         .clickable(remember { MutableInteractionSource() }, null) {}
                         .padding(start = 16.dp + HV, end = 16.dp + HV, top = 18.dp + HV, bottom = 10.dp + insets.calculateBottomPadding()),
                 ) {
-                    Text(title, style = PT.serif(28.sp, c.ink, italic = true, lh = 29.4.sp), modifier = Modifier.padding(end = 20.dp))
+                    Text(title, style = PT.serif(28.sp, c.ink, italic = true, lh = 29.4.sp), modifier = Modifier.padding(end = 20.dp).cssLines(28.sp, 1.05f))
                     if (subtitle != null) Text(subtitle, style = PT.mono(12.sp, c.mute, italic = true), modifier = Modifier.padding(top = 6.dp))
                     Spacer(Modifier.height(14.dp))
                     actions.forEach { a -> SheetButton(a) }
@@ -425,13 +430,107 @@ object PlotterKit : Kit {
         }
     }
 
+    /**
+     * Edit details: the sheet's card, its fields drawn as the record's ruled cell grid (italic
+     * label over the value, the cell going heavy while it has focus), the record's solid ink band
+     * as Save, and a quiet Cancel row.
+     */
     @Composable
-    private fun SheetButton(a: SheetAction) {
+    override fun Form(title: String, subtitle: String?, fields: List<FormField>, saveLabel: String, onSave: () -> Unit, onDismiss: () -> Unit) {
+        Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+            val c = colors()
+            Box(
+                Modifier.fillMaxSize().background(c.paper.copy(alpha = 0.7f))
+                    .clickable(remember { MutableInteractionSource() }, null, onClick = onDismiss)
+                    .imePadding(),
+            ) {
+                Column(
+                    Modifier.align(Alignment.BottomCenter).widthIn(max = 520.dp).fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Top))
+                        .background(c.paper).edges(c.ink, start = HV, top = HV, end = HV)
+                        .clickable(remember { MutableInteractionSource() }, null) {}
+                        .verticalScroll(rememberScrollState())
+                        // after imePadding, only the part of the bottom bars the keyboard doesn't cover is left
+                        .windowInsetsPadding(WindowInsets.safeDrawing.only(WindowInsetsSides.Bottom))
+                        .padding(start = 16.dp + HV, end = 16.dp + HV, top = 18.dp + HV, bottom = 10.dp),
+                ) {
+                    Text(title, style = PT.serif(28.sp, c.ink, italic = true, lh = 29.4.sp), modifier = Modifier.padding(end = 20.dp).cssLines(28.sp, 1.05f))
+                    if (subtitle != null) Text(subtitle, style = PT.mono(12.sp, c.mute, italic = true), modifier = Modifier.padding(top = 6.dp))
+                    Column(Modifier.padding(top = 14.dp).fillMaxWidth().edges(c.ink, start = HL, top = HL)) {
+                        fields.forEachIndexed { i, f -> FormCell(f, last = i == fields.lastIndex, onSave) }
+                    }
+                    SaveBand(saveLabel, onSave, Modifier.padding(top = 14.dp))
+                    SheetButton(SheetAction("Cancel", quiet = true, onClick = onDismiss), rule = false)
+                }
+            }
+        }
+    }
+
+    /** One field: a fine-pen cell, heavy while focused; the whole cell takes the tap. */
+    @Composable
+    private fun FormCell(f: FormField, last: Boolean, onSave: () -> Unit) {
+        val c = colors()
+        val src = remember { MutableInteractionSource() }
+        val focused by src.collectIsFocusedAsState()
+        BasicTextField(
+            f.value, f.onChange,
+            singleLine = true,
+            textStyle = PT.mono(14.sp, c.ink, lh = 20.sp),
+            cursorBrush = SolidColor(c.ink),
+            interactionSource = src,
+            keyboardOptions = KeyboardOptions(imeAction = if (last) ImeAction.Done else ImeAction.Next),
+            keyboardActions = KeyboardActions(onDone = { onSave() }),
+            modifier = Modifier.fillMaxWidth(),
+            decorationBox = { inner ->
+                Column(
+                    Modifier.fillMaxWidth().heightIn(min = 56.dp).edges(c.ink, end = HL, bottom = HL)
+                        .then(if (focused) Modifier.drawBehind {
+                            val hv = pen(HV)
+                            drawRect(c.ink, Offset(hv / 2, hv / 2), Size(size.width - hv, size.height - hv), style = Stroke(hv))
+                        } else Modifier)
+                        .padding(start = 9.dp, end = 9.dp, top = 7.dp, bottom = 8.dp),
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    Text(f.label.lowercase(), style = PT.label(c), modifier = Modifier.cssLines(10.5.sp, 1f))
+                    Box(Modifier.padding(top = 5.dp)) { inner() }
+                    if (f.hint != null) Text(f.hint, style = PT.mono(11.sp, c.mute, italic = true, lh = 15.sp), modifier = Modifier.padding(top = 3.dp))
+                }
+            },
+        )
+    }
+
+    /** The primary action: the record's solid ink band, its label in the display italic with a dimension arrow. */
+    @Composable
+    private fun SaveBand(label: String, onClick: () -> Unit, modifier: Modifier) {
+        val c = colors()
+        val src = remember { MutableInteractionSource() }
+        val pressed by src.collectIsPressedAsState()
+        val bg = if (pressed) c.paper else c.ink
+        val fg = if (pressed) c.ink else c.paper
+        Row(
+            modifier.fillMaxWidth().heightIn(min = 52.dp).background(bg)
+                .then(if (pressed) Modifier.penBox(c.ink, HV) else Modifier)
+                .clickable(src, null, onClick = onClick).padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, style = PT.serif(23.sp, fg, italic = true), modifier = Modifier.weight(1f))
+            Canvas(Modifier.size(34.dp, 12.dp)) {
+                val hl = pen(HL); val u = size.width / 34f
+                val col = fg.copy(alpha = 0.82f)
+                vLine(col, hl / 2, 1 * u, 11 * u, hl)
+                hLine(col, 0f, 28 * u, 6 * u, hl)
+                arrow(col, 34 * u, 6 * u, 0f, 9 * u, 3 * u)
+            }
+        }
+    }
+
+    @Composable
+    private fun SheetButton(a: SheetAction, rule: Boolean = true) {
         val c = colors()
         val src = remember { MutableInteractionSource() }
         val pressed by src.collectIsPressedAsState()
         Box(
-            Modifier.fillMaxWidth().heightIn(min = 52.dp).background(if (pressed) c.ink else c.paper).edges(c.ink, top = HL)
+            Modifier.fillMaxWidth().heightIn(min = 52.dp).background(if (pressed) c.ink else c.paper).edges(c.ink, top = if (rule) HL else 0.dp)
                 .clickable(src, null, onClick = a.onClick).padding(horizontal = 2.dp),
             contentAlignment = Alignment.CenterStart,
         ) {

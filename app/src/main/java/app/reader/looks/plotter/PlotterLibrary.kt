@@ -167,20 +167,36 @@ private fun WideSheet(ui: LibraryUi, on: LibraryActions) {
     val c = colors()
     val insets = WindowInsets.safeDrawing.asPaddingValues()
     val tm = rememberTextMeasurer()
-    Box(Modifier.fillMaxSize().padding(insets).padding(34.dp)) {
+    val ld = LocalLayoutDirection.current
+    // the mockup's 34dp margin, but the system bars eat into it rather than add to it (the zone marks need ~20dp)
+    fun margin(inset: Dp) = maxOf(34.dp, inset + 20.dp)
+    Box(
+        Modifier.fillMaxSize().padding(
+            start = margin(insets.calculateStartPadding(ld)), top = margin(insets.calculateTopPadding()),
+            end = margin(insets.calculateEndPadding(ld)), bottom = margin(insets.calculateBottomPadding()),
+        ),
+    ) {
         Box(
             Modifier.fillMaxSize()
                 .drawBehind { zones(tm, c.mute, c.ink, cols = 8, rows = 6) }
                 .penBox(c.ink, HV).padding(HV),
         ) {
             Row(Modifier.fillMaxSize()) {
-                Column(
-                    Modifier.width(450.dp + 22.dp).fillMaxHeight().verticalScroll(rememberScrollState())
-                        .padding(start = 22.dp, top = 22.dp, bottom = 26.dp),
-                ) {
-                    TitleBlock(ui, on)
-                    Now(ui, on)
-                    if (ui.loaded && !ui.isEmpty && ui.folder != null) Summary(ui)
+                BoxWithConstraints(Modifier.width(450.dp + 22.dp).fillMaxHeight()) {
+                    // the title block and the record fill the first screen at most (the protractor gives way),
+                    // so Continue is never below the fold; the summary follows on scroll. The scroll clips
+                    // 18dp above the frame, so the summary's tag never shows cut through by the frame line.
+                    val first = maxHeight - 22.dp - 26.dp
+                    Column(
+                        Modifier.fillMaxSize().padding(bottom = 18.dp).verticalScroll(rememberScrollState())
+                            .padding(start = 22.dp, top = 22.dp, bottom = 8.dp),
+                    ) {
+                        Column(Modifier.heightIn(max = first)) {
+                            TitleBlock(ui, on)
+                            Now(ui, on, Modifier.weight(1f, fill = false))
+                        }
+                        if (ui.loaded && !ui.isEmpty && ui.folder != null) Summary(ui)
+                    }
                 }
                 Spacer(Modifier.width(30.dp))
                 LazyColumn(
@@ -336,10 +352,10 @@ private fun TitleCell(modifier: Modifier) {
     val c = colors(); val shape = LocalShape.current
     val size = when { shape.wide -> 44.sp; shape.tablet -> 58.sp; else -> 48.sp }
     Column(modifier.padding(start = 12.dp, end = 12.dp, top = 9.dp, bottom = 11.dp)) {
-        Text("reader / plotter", style = PT.label(c))
+        Text("reader / plotter", style = PT.label(c), modifier = Modifier.cssLines(10.5.sp, 1f))
         Text(
             "Library", style = PT.serif(size, c.ink, lh = size * 0.92f),
-            modifier = Modifier.padding(top = 7.dp).trimText(size, top = 0.15f, bottom = 0.3f),
+            modifier = Modifier.padding(top = 7.dp).cssLines(size, 0.92f, marginBottom = 4.dp),
         )
     }
 }
@@ -370,7 +386,7 @@ private fun Cell(label: String, value: String, modifier: Modifier, padEnd: Dp = 
         modifier.heightIn(min = 46.dp).padding(start = 10.dp, end = padEnd, top = 7.dp, bottom = 8.dp),
         verticalArrangement = Arrangement.Center,
     ) {
-        Text(label, style = PT.label(c))
+        Text(label, style = PT.label(c), modifier = Modifier.cssLines(10.5.sp, 1f))
         Spacer(Modifier.height(5.dp))
         Text(value, style = PT.mono(12.5.sp, if (quiet) c.mute else c.ink, lh = 16.25.sp).copy(lineBreak = LineBreak.Heading))
     }
@@ -381,12 +397,12 @@ private fun Cell(label: String, value: String, modifier: Modifier, padEnd: Dp = 
 private fun chapterName(s: String) = s.replace(Regex("^[IVXLC]+\\.\\s*|^Chapter \\d+\\.?\\s*", RegexOption.IGNORE_CASE), "")
 
 @Composable
-private fun Now(ui: LibraryUi, on: LibraryActions) {
+private fun Now(ui: LibraryUi, on: LibraryActions, modifier: Modifier = Modifier) {
     val c = colors(); val shape = LocalShape.current
     val mt = if (shape.wide) 28.dp else 34.dp
     when {
         ui.folder == null -> Detail(
-            "A", "No folder", "record 000", mt, onClick = on.chooseFolder, go = "Choose a folder", goRight = null,
+            "A", "No folder", "record 000", mt, modifier, onClick = on.chooseFolder, go = "Choose a folder", goRight = null,
         ) {
             StateBody(
                 "No library yet.",
@@ -395,18 +411,18 @@ private fun Now(ui: LibraryUi, on: LibraryActions) {
             )
         }
         ui.error != null && ui.current == null && ui.others.isEmpty() -> Detail(
-            "A", "Fault", "record 000", mt, onClick = on.chooseFolder, go = "Choose another folder", goRight = null,
+            "A", "Fault", "record 000", mt, modifier, onClick = on.chooseFolder, go = "Choose another folder", goRight = null,
         ) { StateBody("Can’t read this folder.", ui.error, "unreadable") }
-        !ui.loaded -> Construction(mt)
+        !ui.loaded -> Construction(mt, modifier)
         ui.isEmpty -> Detail(
-            "A", "Empty folder", "record 000", mt, onClick = on.chooseFolder, go = "Choose another folder", goRight = null,
+            "A", "Empty folder", "record 000", mt, modifier, onClick = on.chooseFolder, go = "Choose another folder", goRight = null,
         ) { StateBody("Nothing to read here.", "No EPUB, PDF, TXT or MD files in ${ui.folder}.", "0 files") }
-        ui.current != null -> Current(ui.current, on, mt)
+        ui.current != null -> Current(ui.current, on, mt, modifier)
     }
 }
 
 @Composable
-private fun Current(b: Book, on: LibraryActions, mt: Dp) {
+private fun Current(b: Book, on: LibraryActions, mt: Dp, modifier: Modifier) {
     val c = colors(); val shape = LocalShape.current
     val st = b.state
     val goRight = st.page?.let { p -> st.pages?.let { "page $p of $it" } ?: "page $p" }
@@ -417,12 +433,12 @@ private fun Current(b: Book, on: LibraryActions, mt: Dp) {
     }
     val titleSize = when { shape.wide -> 36.sp; shape.tablet -> 54.sp; else -> 40.sp }
     Detail(
-        "A", "Now reading", "record 001", mt, onClick = { on.open(b) }, onLongClick = { on.hold(b) },
+        "A", "Now reading", "record 001", mt, modifier, onClick = { on.open(b) }, onLongClick = { on.hold(b) },
         go = "Continue reading", goRight = goRight,
     ) {
         Text(
             b.title, style = PT.serif(titleSize, c.ink, italic = true, lh = titleSize * 1.02f).copy(lineBreak = LineBreak.Heading),
-            modifier = Modifier.trimText(titleSize, top = 0.05f, bottom = 0.15f),
+            modifier = Modifier.cssLines(titleSize, 1.02f),
         )
         Text(
             b.author ?: "unknown author", style = PT.mono(if (shape.tabPortrait) 13.5.sp else 12.5.sp, c.mute),
@@ -436,7 +452,11 @@ private fun Current(b: Book, on: LibraryActions, mt: Dp) {
                 Box(Modifier.weight(1f).padding(top = 26.dp)) { Fields(b, threeColumns = false) }
             }
             shape.wide -> {
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { gauge(Modifier.width(300.dp).padding(top = 4.dp)) }
+                // 300dp wide as in the mockup, smaller when the screen is short (system bars on a real tablet)
+                BoxWithConstraints(Modifier.weight(1f, fill = false).fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) {
+                    val w = if (maxHeight == Dp.Infinity) 300.dp else (maxHeight * (376f / 226f)).coerceIn(180.dp, 300.dp)
+                    gauge(Modifier.width(w))
+                }
                 Box(Modifier.padding(top = 8.dp)) { Fields(b, threeColumns = true) }
             }
             else -> {
@@ -475,7 +495,7 @@ private fun Fields(b: Book, threeColumns: Boolean) {
 private fun FieldCell(k: String, v: String, modifier: Modifier) {
     val c = colors()
     Column(modifier.padding(start = 9.dp, end = 9.dp, top = 7.dp, bottom = 8.dp)) {
-        Text(k, style = PT.label(c))
+        Text(k, style = PT.label(c), modifier = Modifier.cssLines(10.5.sp, 1f))
         Spacer(Modifier.height(4.dp))
         Text(v, style = PT.mono(12.5.sp, c.ink, lh = 16.25.sp))
     }
@@ -488,7 +508,7 @@ private fun FieldCell(k: String, v: String, modifier: Modifier) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun Detail(
-    letter: String, name: String, note: String, mt: Dp, onClick: () -> Unit, onLongClick: (() -> Unit)? = null,
+    letter: String, name: String, note: String, mt: Dp, modifier: Modifier, onClick: () -> Unit, onLongClick: (() -> Unit)? = null,
     go: String, goRight: String?, body: @Composable ColumnScope.() -> Unit,
 ) {
     val c = colors(); val shape = LocalShape.current
@@ -496,7 +516,7 @@ private fun Detail(
     val pressed by src.collectIsPressedAsState()
     val padX = if (shape.tabPortrait) 22.dp else 13.dp
     val padTop = when { shape.tabPortrait -> 30.dp; shape.wide -> 20.dp; else -> 22.dp }
-    Box(Modifier.fillMaxWidth().padding(top = mt)) {
+    Box(modifier.fillMaxWidth().padding(top = mt)) {
         Column(
             Modifier.fillMaxWidth()
                 .drawBehind {
@@ -514,7 +534,12 @@ private fun Detail(
                 .combinedClickable(src, null, onLongClick = onLongClick, onClick = onClick)
                 .padding(HV),
         ) {
-            Column(Modifier.fillMaxWidth().padding(start = padX - HV, end = padX - HV, top = padTop - HV), content = body)
+            // landscape: the body takes what the band leaves, so a weighted child (the protractor) can shrink
+            Column(
+                Modifier.then(if (shape.wide) Modifier.weight(1f, fill = false) else Modifier)
+                    .fillMaxWidth().padding(start = padX - HV, end = padX - HV, top = padTop - HV),
+                content = body,
+            )
             GoBand(go, goRight, pressed, Modifier.padding(top = if (shape.tabPortrait) 22.dp else if (shape.wide) 12.dp else 14.dp))
         }
         Tag(letter, name, note, Modifier.offset(x = 9.5.dp, y = (-12).dp))
@@ -598,9 +623,9 @@ private fun Void(label: String, modifier: Modifier = Modifier) {
 
 /** First scan: a quiet box of construction lines, nothing to tap. */
 @Composable
-private fun Construction(mt: Dp) {
+private fun Construction(mt: Dp, modifier: Modifier) {
     val c = colors()
-    Box(Modifier.fillMaxWidth().padding(top = mt)) {
+    Box(modifier.fillMaxWidth().padding(top = mt)) {
         Column(Modifier.fillMaxWidth().background(c.paper).dashedBox(c.ink).padding(start = 13.dp, end = 13.dp, top = 24.dp, bottom = 18.dp)) {
             Text("Surveying the folder…", style = PT.serif(26.sp, c.mute, italic = true))
             Text("Books appear here as they are found.", style = PT.mono(12.5.sp, c.mute), modifier = Modifier.padding(top = 8.dp))
@@ -649,12 +674,13 @@ private fun LazyListScope.index(ui: LibraryUi, on: LibraryActions, wrap: @Compos
 @Composable
 private fun IndexHead(ui: LibraryUi) {
     val c = colors(); val shape = LocalShape.current
-    val mt = if (shape.wide) 12.dp else 34.dp
+    // landscape: the index's top border lines up with the title block's, its tag in the frame's padding
+    val mt = if (shape.wide) 0.dp else 34.dp
     Box(Modifier.fillMaxWidth().padding(top = mt)) {
         Column(Modifier.fillMaxWidth().background(c.paper).edges(c.ink, start = HV, top = HV, end = HV).padding(start = HV, end = HV, top = HV)) {
             GridRow(Modifier.edges(c.ink, bottom = HL)) { col, m ->
                 val lb = PT.label(c)
-                Box(m.padding(start = 10.dp, end = 10.dp, top = 22.dp, bottom = 8.dp)) {
+                Box(m.padding(start = 10.dp, end = 10.dp, top = 22.dp, bottom = 8.dp).cssLines(10.5.sp, 1f)) {
                     when (col) {
                         Col.Fmt -> Text("fmt", style = lb)
                         Col.Title -> Text("title, author", style = lb)
@@ -693,7 +719,7 @@ private fun IndexRow(b: Book, on: LibraryActions) {
                     )
                     Col.Title -> Column(m.padding(horizontal = 10.dp, vertical = vPad), verticalArrangement = Arrangement.Center) {
                         Text(
-                            b.title, style = PT.serif(21.sp, if (b.isFinished) c.mute else c.ink, lh = 22.7.sp),
+                            b.title, style = PT.serif(21.sp, if (b.isFinished) c.mute else c.ink, lh = 22.7.sp), modifier = Modifier.cssLines(21.sp, 1.08f),
                         )
                         Spacer(Modifier.height(3.dp))
                         Text(b.author ?: "unknown", style = PT.mono(11.5.sp, c.mute), maxLines = 1, overflow = TextOverflow.Ellipsis)
