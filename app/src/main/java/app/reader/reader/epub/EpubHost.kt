@@ -97,6 +97,9 @@ class EpubHost : Fragment() {
         childFragmentManager.fragmentFactory = d.factory.createFragmentFactory(
             initialLocator = vm.currentLocator ?: d.initial,
             initialPreferences = style?.toPreferences() ?: EpubPreferences(),
+            paginationListener = object : EpubNavigatorFragment.PaginationListener {
+                override fun onPageChanged(pageIndex: Int, totalPages: Int, locator: Locator) = vm.onPagination(pageIndex, totalPages, locator)
+            },
             listener = object : EpubNavigatorFragment.Listener {
                 override fun onExternalLinkActivated(url: AbsoluteUrl) {
                     runCatching { startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url.toString()))) }
@@ -134,7 +137,7 @@ class EpubHost : Fragment() {
     }
 
     override fun onCreateView(inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?): View {
-        val view = FragmentContainerView(inflater.context).apply { id = View.generateViewId() }
+        val view = PinchContainer(inflater.context, vm).apply { id = View.generateViewId() }
         if (vm.doc.value !is Doc.Reflow) return view
         childFragmentManager.commitNow { add(view.id, EpubNavigatorFragment::class.java, Bundle(), TAG) }
         return view
@@ -165,7 +168,12 @@ class EpubHost : Fragment() {
         viewLifecycleOwner.lifecycleScope.launch {
             viewLifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 launch { nav.currentLocator.collect { vm.onLocator(it) } }
-                launch { ReadingStyles.current.filterNotNull().collect { nav.submitPreferences(it.toPreferences()) } }
+                launch {
+                    ReadingStyles.current.filterNotNull().collect {
+                        vm.onStyleChanged()
+                        nav.submitPreferences(it.toPreferences())
+                    }
+                }
                 launch {
                     vm.commands.collect { c ->
                         val animated = ReadingStyles.current.value?.anim == PageAnim.Slide
@@ -174,7 +182,7 @@ class EpubHost : Fragment() {
                                 val ok = if (c.forward) nav.goForward(animated) else nav.goBackward(animated)
                                 if (!ok) vm.onEdge()
                             }
-                            is ReaderViewModel.Command.GoPage -> (vm.doc.value as? Doc.Reflow)?.positions?.getOrNull(c.page - 1)?.let { nav.go(it, false) }
+                            is ReaderViewModel.Command.GoPage -> (vm.doc.value as? Doc.Reflow)?.positions?.getOrNull(vm.positionFor(c.page) - 1)?.let { nav.go(it, false) }
                             is ReaderViewModel.Command.GoLocator -> nav.go(c.locator, false)
                         }
                     }
@@ -199,3 +207,37 @@ class EpubHost : Fragment() {
     companion object { private const val TAG = "navigator" }
 }
 
+
+/**
+ * The navigator's container. With "text wrap zoom" on, a two-finger pinch is taken from the
+ * web view and turned into text size changes, so the text grows and re-wraps instead of
+ * being magnified off the edges.
+ */
+class PinchContainer(context: android.content.Context, private val vm: ReaderViewModel) : android.widget.FrameLayout(context) {
+    private var pinching = false
+    private val detector = android.view.ScaleGestureDetector(context, object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
+        private var total = 1f
+        override fun onScaleBegin(d: android.view.ScaleGestureDetector): Boolean {
+            if (!enabled()) return false
+            total = 1f; pinching = true; vm.pinchStart(); return true
+        }
+        override fun onScale(d: android.view.ScaleGestureDetector): Boolean { total *= d.scaleFactor; vm.pinchBy(total); return true }
+        override fun onScaleEnd(d: android.view.ScaleGestureDetector) { vm.pinchEnd() }
+    }).apply { isQuickScaleEnabled = false }
+
+    private fun enabled() = (context.applicationContext as app.reader.ReaderApp).settings.current.wrapZoom
+
+    override fun onInterceptTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (!enabled()) return false
+        detector.onTouchEvent(ev)
+        if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) pinching = false
+        return pinching || ev.pointerCount >= 2 && ev.actionMasked == android.view.MotionEvent.ACTION_POINTER_DOWN
+    }
+
+    @android.annotation.SuppressLint("ClickableViewAccessibility")
+    override fun onTouchEvent(ev: android.view.MotionEvent): Boolean {
+        detector.onTouchEvent(ev)
+        if (ev.actionMasked == android.view.MotionEvent.ACTION_UP || ev.actionMasked == android.view.MotionEvent.ACTION_CANCEL) pinching = false
+        return true
+    }
+}

@@ -107,8 +107,46 @@ class LibraryRepository(
         val merged = book.state.activity.toMutableMap()
         if (seconds > 0) merged[today] = (merged[today] ?: 0) + seconds
         val next = f(book.state).copy(updatedAt = System.currentTimeMillis())
-        _state.update { s -> s.copy(books = s.books.map { if (it.key == key) it.copy(state = next.copy(activity = merged)) else it }) }
+        _state.update { s -> s.copy(books = s.books.map { if (it.key == key) it.copy(state = next.copy(activity = merged)).withEdits() else it }) }
         scope.launch(Dispatchers.IO) { mutex.withLock { sc.write(key, book.path, next.copy(activity = own)) } }
+    }
+
+    /** Title and author as the user wants them shown; blank means "use the file's own". */
+    fun editDetails(key: String, title: String, author: String) =
+        save(key) { it.copy(meta = BookMeta(title.trim().ifBlank { null }, author.trim().ifBlank { null }, System.currentTimeMillis())) }
+
+    /**
+     * Renames the file in the folder (keeping its extension). The reading state moves to the
+     * new name's key and remembers the old one, so the other device catches up after sync.
+     * Returns an error message, or null on success.
+     */
+    suspend fun rename(key: String, newBase: String): String? = kotlinx.coroutines.withContext(Dispatchers.IO) {
+        val book = book(key) ?: return@withContext "Book not found."
+        val base = newBase.trim().replace('/', '-').trimStart('.')
+        if (base.isEmpty()) return@withContext "The name can't be empty."
+        val ext = book.fileName.substringAfterLast('.', "")
+        val name = if (ext.isEmpty()) base else "$base.$ext"
+        if (name == book.fileName) return@withContext null
+        val newUri = try {
+            DocumentsContract.renameDocument(resolver, book.uri, name)
+        } catch (e: Exception) {
+            return@withContext e.message ?: "Couldn't rename the file."
+        } ?: return@withContext "Couldn't rename the file."
+        val dir = book.path.substringBeforeLast('/', "").let { if (it.isEmpty()) "" else "$it/" }
+        val newPath = dir + name
+        val newKey = Book.keyOf(newPath)
+        val sc = sidecars
+        mutex.withLock {
+            sc?.write(newKey, newPath, book.state.copy(
+                activity = sc.ownActivity(key),
+                formerKeys = (book.state.formerKeys + key).distinct(),
+                updatedAt = System.currentTimeMillis(),
+            ))
+            sc?.delete(key)
+        }
+        _state.update { s -> s.copy(books = s.books.map { if (it.key == key) it.copy(key = newKey, uri = newUri, path = newPath) else it }) }
+        scan()
+        null
     }
 
     fun markFinished(key: String) = save(key) { it.copy(finished = true, progress = 1f) }
@@ -134,10 +172,21 @@ class LibraryRepository(
             val meta = cache[k]?.takeIf { it.size == e.size && it.modified == e.modified }
                 ?: extract(e).also { cache[k] = it }
             val key = Book.keyOf(e.path)
-            Book(key, e.uri, e.path, e.format, meta.title, meta.author, e.size, e.modified, states[key] ?: ReadingState())
+            Book(key, e.uri, e.path, e.format, meta.title, meta.author, e.size, e.modified, withFormer(states, key)).withEdits()
         }
         runCatching { cacheFile.writeText(json.encodeToString(cache.filterKeys { k -> entries.any { it.uri.toString() == k } })) }
         return books
+    }
+
+    /** A book's state, folded together with states saved under its names before a rename. */
+    private fun withFormer(states: Map<String, ReadingState>, key: String): ReadingState {
+        val own = states[key] ?: ReadingState()
+        val former = own.formerKeys.mapNotNull { states[it] }
+        if (former.isEmpty()) return own
+        val newest = (former + own).maxBy { it.updatedAt }
+        val activity = mutableMapOf<String, Int>()
+        (former + own).forEach { s -> s.activity.forEach { (d, sec) -> activity[d] = maxOf(activity[d] ?: 0, sec) } }
+        return newest.copy(activity = activity, meta = own.meta ?: newest.meta, formerKeys = own.formerKeys)
     }
 
     private fun walk(tree: Uri, parentId: String, prefix: String, out: MutableList<Entry>) {

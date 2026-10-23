@@ -94,6 +94,13 @@ class Sidecars(
         }
     }
 
+    /** Forgets this device's file for a book (after a rename moved it to a new key). */
+    fun delete(key: String) {
+        val id = ids.remove("$key.$deviceId.json") ?: return
+        runCatching { DocumentsContract.deleteDocument(resolver, DocumentsContract.buildDocumentUriUsingTree(tree, id)) }
+        ownActivity.remove(key)
+    }
+
     companion object {
         const val DIR = ".reader"
         private const val TAG = "Sidecars"
@@ -107,6 +114,8 @@ class Sidecars(
             return newest.copy(
                 activity = activity,
                 openedAt = states.mapNotNull { it.second.openedAt }.maxOrNull(),
+                meta = states.mapNotNull { it.second.meta }.maxByOrNull { it.at },
+                formerKeys = states.flatMap { it.second.formerKeys }.distinct(),
             )
         }
     }

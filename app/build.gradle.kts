@@ -73,6 +73,7 @@ dependencies {
     implementation("org.readium.kotlin-toolkit:readium-navigator:$readium")
     implementation("org.readium.kotlin-toolkit:readium-navigator-media-tts:$readium")
 
+    implementation("com.tom-roush:pdfbox-android:2.0.27.0")
     implementation("org.commonmark:commonmark:0.31.0")
     implementation("org.commonmark:commonmark-ext-gfm-tables:0.31.0")
     implementation("org.commonmark:commonmark-ext-gfm-strikethrough:0.31.0")

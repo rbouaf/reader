@@ -169,6 +169,16 @@ object TextToEpub {
 
     // ---------------- packaging ----------------
 
+    /** Writes ready-made chapters (one XHTML file each) as an EPUB. */
+    fun pack(chapters: List<Chapter>, title: String, author: String?, out: File) {
+        out.parentFile?.mkdirs()
+        val tmp = File(out.path + ".tmp")
+        tmp.outputStream().use { write(it, title, author, chapters) }
+        tmp.renameTo(out)
+    }
+
+    fun escape(s: String) = esc(s)
+
     private fun write(os: OutputStream, title: String, author: String?, chapters: List<Chapter>) {
         ZipOutputStream(os).use { zip ->
             // mimetype first and uncompressed, as the spec requires

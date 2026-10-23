@@ -42,7 +42,14 @@ data class ReadingState(
     /** Seconds read per day (ISO date). Feeds the activity traces. */
     val activity: Map<String, Int> = emptyMap(),
     val updatedAt: Long = 0,
+    /** Title/author typed by the user (long-press → Edit details); newest edit wins across devices. */
+    val meta: BookMeta? = null,
+    /** Keys this book had before a rename, so positions saved under the old name still apply. */
+    val formerKeys: List<String> = emptyList(),
 )
+
+@Serializable
+data class BookMeta(val title: String? = null, val author: String? = null, val at: Long = 0)
 
 @Immutable
 data class Book(
@@ -57,8 +64,18 @@ data class Book(
     val size: Long,
     val modified: Long,
     val state: ReadingState = ReadingState(),
+    /** Title and author as found in the file, before any edits. */
+    val fileTitle: String = title,
+    val fileAuthor: String? = author,
 ) {
     val fileName get() = path.substringAfterLast('/')
+
+    /** This book with the user's title/author edits applied (or removed, if cleared). */
+    fun withEdits(): Book = copy(
+        title = state.meta?.title?.takeIf { it.isNotBlank() } ?: fileTitle,
+        author = state.meta?.author?.takeIf { it.isNotBlank() } ?: fileAuthor,
+    )
+
     val progress get() = if (state.finished) 1f else state.progress.coerceIn(0f, 1f)
     val isFinished get() = state.finished || state.progress >= 0.999f
     val isNew get() = !isFinished && state.openedAt == null && state.progress <= 0f

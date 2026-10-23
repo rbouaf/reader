@@ -34,6 +34,7 @@ import app.reader.looks.LibraryUi
 import app.reader.looks.LocalLook
 import app.reader.looks.Looks
 import app.reader.looks.SheetAction
+import app.reader.looks.FormField
 import app.reader.looks.common.SettingsScreen
 import app.reader.theme.Hx
 import app.reader.theme.LocalHaptics
@@ -63,6 +64,7 @@ private fun Root() {
     val look = Looks.byId(settings.look)
     var screen by rememberSaveable { mutableStateOf(Screen.Library) }
     var held by remember { mutableStateOf<Book?>(null) }
+    var editing by remember { mutableStateOf<Book?>(null) }
 
     val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
         if (uri != null) app.library.setFolder(uri)
@@ -114,6 +116,7 @@ private fun Root() {
                     subtitle = b.path,
                     actions = listOf(
                         SheetAction("Open") { held = null; context.startActivity(ReaderActivity.intent(context, b)) },
+                        SheetAction("Edit details") { held = null; editing = b },
                         SheetAction("Mark as finished") { hx(Hx.Confirm); app.library.markFinished(b.key); held = null },
                         SheetAction("Reset progress") { hx(Hx.Confirm); app.library.resetProgress(b.key); held = null },
                         SheetAction("Close", quiet = true) { held = null },
@@ -121,7 +124,45 @@ private fun Root() {
                     onDismiss = { held = null },
                 )
             }
+            editing?.let { b -> EditDetails(b, onDone = { editing = null }) }
         }
     }
 }
 
+
+/** Long-press → Edit details: the shown title and author, and the file's actual name. */
+@Composable
+private fun EditDetails(b: Book, onDone: () -> Unit) {
+    val app = LocalContext.current.app
+    val kit = LocalLook.current.kit
+    val hx = LocalHaptics.current
+    val scope = androidx.compose.runtime.rememberCoroutineScope()
+    var title by remember(b.key) { mutableStateOf(b.title) }
+    var author by remember(b.key) { mutableStateOf(b.author.orEmpty()) }
+    val base = b.fileName.substringBeforeLast('.')
+    var name by remember(b.key) { mutableStateOf(base) }
+    var error by remember(b.key) { mutableStateOf<String?>(null) }
+    val ext = b.fileName.substringAfterLast('.', "")
+    kit.Form(
+        title = "Edit details",
+        subtitle = error ?: b.path,
+        fields = listOf(
+            FormField("Title", title, "Leave empty to use the book's own title.") { title = it },
+            FormField("Author", author, null) { author = it },
+            FormField("File name", name, "Renames the file in your books folder${if (ext.isNotEmpty()) "; it stays .$ext" else ""}.") { name = it },
+        ),
+        saveLabel = "Save",
+        onSave = {
+            scope.launch {
+                if (title != b.title || author != b.author.orEmpty()) {
+                    val t = if (title.isBlank() || title == b.fileTitle) "" else title
+                    val a = if (author.isBlank() || author == b.fileAuthor) "" else author
+                    app.library.editDetails(b.key, t, a)
+                }
+                val err = if (name.trim() != base) app.library.rename(b.key, name) else null
+                if (err == null) { hx(Hx.Confirm); onDone() } else { hx(Hx.Edge); error = err }
+            }
+        },
+        onDismiss = onDone,
+    )
+}

@@ -25,7 +25,7 @@ import java.util.Locale
  * PDFs read each page's text layer.
  */
 @OptIn(ExperimentalReadiumApi::class)
-class ReadAloud(private val vm: ReaderViewModel, private val scope: CoroutineScope) {
+class ReadAloud(private val vm: ReaderViewModel, private val scope: CoroutineScope) : ReadAloudService.Controls {
     private val app get() = vm.getApplication<android.app.Application>()
     private var epub: AndroidTtsNavigator? = null
     private var epubJobs: List<Job> = emptyList()
@@ -58,19 +58,20 @@ class ReadAloud(private val vm: ReaderViewModel, private val scope: CoroutineSco
             initialLocator = firstVisible?.invoke() ?: vm.currentLocator,
         ).getOrElse { Log.w(TAG, "tts init failed: $it"); return@launch }
         epub = nav
-        vm.setTts(TtsState.Playing)
+        publish(TtsState.Playing)
         epubJobs = listOf(
             scope.launch {
                 nav.location.collect { loc ->
                     _utterance.value = loc.utteranceLocator
                     vm.follow(loc.utteranceLocator)
+                    publish(vm.ui.value.tts)
                 }
             },
             scope.launch {
                 nav.playback.collect { p ->
                     when (p.state) {
                         is TtsNavigator.State.Ended, is TtsNavigator.State.Failure -> stop()
-                        else -> vm.setTts(if (p.playWhenReady) TtsState.Playing else TtsState.Paused)
+                        else -> publish(if (p.playWhenReady) TtsState.Playing else TtsState.Paused)
                     }
                 }
             },
@@ -90,12 +91,12 @@ class ReadAloud(private val vm: ReaderViewModel, private val scope: CoroutineSco
     private fun startPdf(d: Doc.Pdf) {
         page = vm.ui.value.page
         index = 0
-        vm.setTts(TtsState.Playing)
+        publish(TtsState.Playing)
         val e = engine
         if (e != null && ready) { speakPage(d) ; return }
         engine = TextToSpeech(app) { status ->
             ready = status == TextToSpeech.SUCCESS
-            if (!ready) { vm.setTts(TtsState.Off); return@TextToSpeech }
+            if (!ready) { publish(TtsState.Off); return@TextToSpeech }
             engine?.language = Locale.getDefault()
             engine?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                 override fun onStart(id: String?) {}
@@ -145,28 +146,51 @@ class ReadAloud(private val vm: ReaderViewModel, private val scope: CoroutineSco
 
     // ---------------- controls ----------------
 
-    fun playPause() {
+    /** Tells the media service (lock screen, notification) what's happening. */
+    private var published: Triple<TtsState, String, String>? = null
+
+    private fun publish(state: TtsState) {
+        vm.setTts(state)
+        val now = Triple(state, vm.ui.value.title, vm.ui.value.chapter ?: "")
+        if (now == published) return
+        published = now
+        if (state == TtsState.Off) {
+            if (ReadAloudService.controls === this) ReadAloudService.controls = null
+            ReadAloudService.stop(app)
+        } else {
+            ReadAloudService.controls = this
+            ReadAloudService.update(app, vm.ui.value.title, vm.ui.value.chapter ?: "", state == TtsState.Playing)
+        }
+    }
+
+    override fun playPause() {
         when (vm.ui.value.tts) {
             TtsState.Off -> start()
-            TtsState.Playing -> { epub?.pause(); engine?.stop(); vm.setTts(TtsState.Paused) }
+            TtsState.Playing -> { epub?.pause(); engine?.stop(); publish(TtsState.Paused) }
             TtsState.Paused -> {
-                vm.setTts(TtsState.Playing)
+                publish(TtsState.Playing)
                 epub?.play() ?: speak()
             }
         }
     }
 
-    fun previous() { epub?.skipToPreviousUtterance() ?: run { index = (index - 1).coerceAtLeast(0); speak() } }
-    fun next() { epub?.skipToNextUtterance() ?: run { index++; if (index < sentences.size) speak() } }
+    override fun previous() { epub?.skipToPreviousUtterance() ?: run { index = (index - 1).coerceAtLeast(0); speak() } }
+    override fun next() { epub?.skipToNextUtterance() ?: run { index++; if (index < sentences.size) speak() } }
 
-    fun stop() {
+    override fun stop() {
         epubJobs.forEach { it.cancel() }
         epubJobs = emptyList()
         epub?.close()
         epub = null
         engine?.stop()
         _utterance.value = null
-        vm.setTts(TtsState.Off)
+        publish(TtsState.Off)
+    }
+
+    /** Back on screen after the lock: show the page being read. */
+    fun catchUp() {
+        if (vm.ui.value.tts == TtsState.Off) return
+        _utterance.value?.let { vm.follow(it) } ?: vm.follow(page)
     }
 
     fun release() {

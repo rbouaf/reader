@@ -125,7 +125,7 @@ fun SettingsScreen(
                 choose(font, fonts[i]) { it.copy(font = fonts[i]) }
             }
             DetentSlider(
-                label = "Size", value = settings.size.toFloat(), min = 14f, max = 28f, step = 1f, detent = 1f, home = 18f,
+                label = "Size", value = settings.size.toFloat(), min = MIN_SIZE.toFloat(), max = MAX_SIZE.toFloat(), step = 1f, detent = 1f, home = 18f,
                 text = { "${it.toInt()} px" }, stepper = true,
             ) { v -> update { it.copy(size = v.roundToInt()) } }
             DetentSlider(
@@ -155,6 +155,11 @@ fun SettingsScreen(
                 choose(settings.tapSide, sides[i]) { it.copy(tapSide = sides[i]) }
             }
             kit.Toggle("Volume keys turn pages", null, settings.volumeKeys) { on -> toggle(on) { it.copy(volumeKeys = on) } }
+            kit.Toggle(
+                "Text wrap zoom",
+                "Pinch to make text bigger or smaller; it re-wraps to fit the screen. On a PDF, pinching in switches to a text view of the page.",
+                settings.wrapZoom,
+            ) { on -> toggle(on) { it.copy(wrapZoom = on) } }
         }
 
         kit.Group("PDF", null) {
@@ -180,6 +185,9 @@ fun SettingsScreen(
         }
     }
 }
+
+const val MIN_SIZE = 12
+const val MAX_SIZE = 40
 
 /**
  * A slider with detents: a fine tick at each detent, a distinct one at the neutral point,

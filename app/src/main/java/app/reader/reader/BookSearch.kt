@@ -71,7 +71,7 @@ class BookSearch(private val vm: ReaderViewModel, private val scope: CoroutineSc
     fun clear() { job?.cancel(); _highlight.value = null }
 
     private fun hitOf(d: Doc.Reflow, l: Locator): SearchHit {
-        val page = l.locations.position ?: vm.pageFor(l)
+        val page = vm.pageFor(l)
         val chapter = vm.ui.value.toc.lastOrNull { e -> e.page != null && page != null && e.page <= page }?.title ?: l.title
         return SearchHit(
             before = l.text.before.orEmpty().squash().takeLast(40).trimStart(),

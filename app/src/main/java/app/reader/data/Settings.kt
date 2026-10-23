@@ -49,6 +49,8 @@ data class AppSettings(
     val anim: PageAnim = PageAnim.Instant,
     val tapSide: TapSide = TapSide.Right,
     val volumeKeys: Boolean = true,
+    /** Pinch resizes the text, which re-wraps to the screen (PDFs switch to a text view). */
+    val wrapZoom: Boolean = true,
     val pdfRecolor: Boolean = true,
     val pdfTrim: Boolean = true,
     val haptics: HapticLevel = HapticLevel.Quiet,

@@ -12,7 +12,11 @@ import app.reader.data.Metadata
 import app.reader.data.ReadingState
 import app.reader.data.TextToEpub
 import app.reader.looks.TtsState
+import app.reader.looks.common.MAX_SIZE
+import app.reader.looks.common.MIN_SIZE
 import app.reader.reader.pdf.PdfDoc
+import app.reader.reader.pdf.PdfOutline
+import app.reader.reader.pdf.PdfText
 import app.reader.theme.Hx
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -27,6 +31,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
 import org.json.JSONObject
 import org.readium.r2.navigator.epub.EpubNavigatorFactory
 import org.readium.r2.shared.ExperimentalReadiumApi
@@ -60,11 +65,25 @@ data class ReaderUi(
     val search: SearchUi = SearchUi(),
     val tts: TtsState = TtsState.Off,
     val canReadAloud: Boolean = false,
+    /** Text size while a pinch is resizing it, for the on-screen readout. */
+    val zoomSize: Int? = null,
+    /** A PDF shown as re-wrapped text (text wrap zoom). */
+    val textView: Boolean = false,
+    /** A short message over the page ("Preparing text view…"). */
+    val notice: String? = null,
 ) {
     val chapter get() = tocIndex?.let { toc.getOrNull(it)?.title }
-    /** Top-level chapters only, for "chapter 3 of 7". */
-    val topLevel get() = toc.filter { it.depth == 0 }
+    /** Top-level chapters only, for "chapter 3 of 7": front and back matter don't count. */
+    val topLevel get() = toc.filter { it.depth == 0 && !isMatter(it.title, title) }
 }
+
+private val MATTER = Regex(
+    "^(contents|table of contents|title( page)?|cover|copyright.*|colophon|dedication|acknowledg(e)?ments|about the (author|publisher)|also by .*|index|imprint|.*project gutenberg.*|the full project gutenberg.*)$",
+    RegexOption.IGNORE_CASE,
+)
+
+/** Contents entries that aren't chapters: the contents page itself, the title page, licences… */
+fun isMatter(entry: String, bookTitle: String) = MATTER.matches(entry.trim().trimEnd('.')) || entry.trim().equals(bookTitle.trim(), ignoreCase = true)
 
 /** The opened document, by engine. */
 sealed interface Doc {
@@ -207,13 +226,12 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             } ?: start
             TocEntry(link.title?.trim()?.ifEmpty { null } ?: "Untitled", depth, page, link)
         }
-        _ui.update {
-            it.copy(
-                loading = false, pageCount = positions.size.coerceAtLeast(1), toc = toc,
-                chapterPages = toc.filter { e -> e.depth == 0 }.mapNotNull { e -> e.page }.distinct().sorted()
-                    .ifEmpty { toc.mapNotNull { e -> e.page }.distinct().sorted() },
-            )
-        }
+        rawToc = toc
+        rawChapters = toc.filter { e -> e.depth == 0 && !isMatter(e.title, publication.metadata.title ?: "") }.mapNotNull { e -> e.page }.distinct().sorted()
+            .ifEmpty { toc.mapNotNull { e -> e.page }.distinct().sorted() }
+        positionCount = positions.size.coerceAtLeast(1)
+        _ui.update { it.copy(loading = false) }
+        rescale()
         return Doc.Reflow(publication, EpubNavigatorFactory(publication), positions, starts, initial)
     }
 
@@ -237,8 +255,67 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             ?: state?.page ?: 1
         val trim = if (app.settings.current.pdfTrim) doc.trimBoxes() else PdfDoc.FULL to PdfDoc.FULL
         _ui.update { it.copy(loading = false, pageCount = doc.pageCount, page = page.coerceIn(1, doc.pageCount), pageLast = page.coerceIn(1, doc.pageCount)) }
+        // the outline can take a moment on big files: contents and chapter ticks arrive when ready
+        viewModelScope.launch(Dispatchers.IO) {
+            val toc = PdfOutline.read(app, uri)
+            if (toc.isEmpty()) return@launch
+            _ui.update { u ->
+                u.copy(
+                    toc = toc,
+                    tocIndex = toc.indexOfLast { e -> e.page != null && e.page <= u.page }.takeIf { it >= 0 },
+                    chapterPages = toc.filter { e -> e.depth == 0 && !isMatter(e.title, u.title) }.mapNotNull { it.page }.distinct().sorted(),
+                )
+            }
+        }
         return Doc.Pdf(doc, page.coerceIn(1, doc.pageCount), trim)
     }
+
+    // ---------------- screen pages ----------------
+    //
+    // Readium counts "positions" (about 1024 characters each). People count screens. The
+    // navigator tells us how many screens the current resource takes, which gives screens per
+    // position; everything shown (page x of y, contents, ticks, search, library) uses screens.
+    // PDFs have real pages, so their scale stays 1.
+
+    private var scale = 1.0
+    private var measured = false
+    private var positionCount = 1
+    private var rawToc: List<TocEntry> = emptyList()
+    private var rawChapters: List<Int> = emptyList()
+    /** Last pagination report: resource index, page in it (0-based), its page count. */
+    private var paging: Triple<Int, Int, Int>? = null
+
+    private fun toScreen(pos: Int) = ((pos - 1) * scale).roundToInt() + 1
+    /** The position (1-based) a screen page starts in. */
+    fun positionFor(screen: Int) = (((screen - 1) / scale).toInt() + 1).coerceIn(1, positionCount)
+
+    private fun rescale() {
+        val count = maxOf(1, (positionCount * scale).roundToInt())
+        _ui.update { u ->
+            u.copy(
+                pageCount = count,
+                toc = rawToc.map { e -> e.copy(page = e.page?.let(::toScreen)?.coerceAtMost(count)) },
+                chapterPages = rawChapters.map(::toScreen).map { it.coerceAtMost(count) }.distinct(),
+            )
+        }
+    }
+
+    /** From the EPUB navigator: the visible screen inside the current resource. */
+    fun onPagination(pageIndex: Int, totalPages: Int, locator: Locator) {
+        val d = _doc.value as? Doc.Reflow ?: return
+        val r = d.publication.readingOrder.indexOfFirstWithHref(locator.href) ?: return
+        paging = Triple(r, pageIndex, totalPages)
+        val n = (d.resourceStart.getOrElse(r + 1) { positionCount + 1 }) - d.resourceStart[r]
+        if (!measured && totalPages >= 3 && n >= 2) {
+            measured = true
+            scale = totalPages.toDouble() / n
+            rescale()
+        }
+        lastLocator?.let { onLocator(it) }
+    }
+
+    /** Text size or layout changed: measure screens per position again. */
+    fun onStyleChanged() { measured = false }
 
     // ---------------- position ----------------
 
@@ -246,7 +323,12 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     fun onLocator(locator: Locator) {
         val d = _doc.value as? Doc.Reflow ?: return
         lastLocator = locator
-        val page = pageOf(d, locator)
+        val r = d.publication.readingOrder.indexOfFirstWithHref(locator.href)
+        val p = paging
+        val page = if (p != null && p.first == r) {
+            // exact within the resource on screen
+            (toScreen(d.resourceStart[r]) + p.second).coerceAtMost(_ui.value.pageCount)
+        } else toScreen(pageOf(d, locator))
         onPage(page, page, locator)
     }
 
@@ -270,7 +352,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     /** The 1-based page of a locator in a reflowable book. */
-    fun pageFor(l: Locator): Int? = (_doc.value as? Doc.Reflow)?.let { pageOf(it, l) }
+    fun pageFor(l: Locator): Int? = (_doc.value as? Doc.Reflow)?.let { toScreen(pageOf(it, l)) }
 
     private fun pageOf(d: Doc.Reflow, l: Locator): Int {
         l.locations.position?.let { return it.coerceIn(1, d.positions.size.coerceAtLeast(1)) }
@@ -328,6 +410,113 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun scrubEnd() = _ui.update { it.copy(scrubbing = false, returnPage = it.returnPage?.takeIf { r -> r != it.page }) }
+
+    // ---------------- text wrap zoom ----------------
+
+    private var pinchStart = 0
+    private var lastApplied = 0L
+
+    fun pinchStart() {
+        pinchStart = app.settings.current.size
+        hideChrome()
+        _ui.update { it.copy(zoomSize = pinchStart) }
+    }
+
+    /** [factor] is the pinch's total scale since it began. Sizes snap to whole pixels. */
+    fun pinchBy(factor: Float) {
+        // in a PDF's text view, pinching out goes back to the real page
+        if (_ui.value.textView && factor < 0.75f) { _ui.update { it.copy(zoomSize = null) }; exitTextView(); return }
+        val target = (pinchStart * factor).roundToInt().coerceIn(MIN_SIZE, MAX_SIZE)
+        val shown = _ui.value.zoomSize ?: pinchStart
+        if (target == shown) {
+            if ((factor > 1 && target == MAX_SIZE) || (factor < 1 && target == MIN_SIZE)) _hx.tryEmit(Hx.Edge)
+            return
+        }
+        _hx.tryEmit(if (target == 18) Hx.DetentHome else Hx.Detent)
+        _ui.update { it.copy(zoomSize = target) }
+        // re-wrapping the whole chapter is costly: apply at most a few times a second while pinching
+        val now = System.currentTimeMillis()
+        if (now - lastApplied > 250) { lastApplied = now; app.settings.update { it.copy(size = target) } }
+    }
+
+    fun pinchEnd() {
+        val size = _ui.value.zoomSize ?: return
+        app.settings.update { it.copy(size = size) }
+        viewModelScope.launch { delay(600); _ui.update { it.copy(zoomSize = null) } }
+    }
+
+    // ---------------- PDF text view ----------------
+
+    private var pdfDoc: Doc.Pdf? = null
+    private var pdfToc: List<TocEntry> = emptyList()
+    private var pdfChapters: List<Int> = emptyList()
+    private var entering = false
+    private var noticeJob: Job? = null
+
+    private fun notice(text: String?, forMs: Long = 2600) {
+        noticeJob?.cancel()
+        _ui.update { it.copy(notice = text) }
+        if (text != null && forMs > 0) noticeJob = viewModelScope.launch { delay(forMs); _ui.update { it.copy(notice = null) } }
+    }
+
+    /** The PDF page the text view is showing (its resources are the PDF's pages, in order). */
+    private fun textViewPage(): Int {
+        val d = _doc.value as? Doc.Reflow ?: return _ui.value.page
+        val r = lastLocator?.let { d.publication.readingOrder.indexOfFirstWithHref(it.href) } ?: return _ui.value.page
+        return r + 1
+    }
+
+    /** Pinching in on a PDF page: show the page's text re-wrapped, at the reading size. */
+    fun enterTextView() {
+        val pdf = _doc.value as? Doc.Pdf ?: return
+        if (entering) return
+        entering = true
+        hideChrome()
+        val page = _ui.value.page
+        val book = key?.let { library.book(it) }
+        viewModelScope.launch {
+            try {
+                notice("Preparing text view…", 0)
+                val out = File(app.cacheDir, "pdftext/${book?.key ?: "x"}-${book?.size ?: 0}-${book?.modified ?: 0}.epub")
+                val file = withContext(Dispatchers.IO) {
+                    PdfText.build(pdf.doc, _ui.value.title, _ui.value.author, _ui.value.toc, out) { p ->
+                        _ui.update { it.copy(notice = "Preparing text view… ${(p * 100).toInt()}%") }
+                    }
+                }
+                if (file == null) { notice("This PDF is scanned images with no text layer, so it can't be re-wrapped.", 3500); return@launch }
+                val pub = withContext(Dispatchers.IO) { app.readium.retrieveFile(file) }
+                pdfDoc = pdf; pdfToc = _ui.value.toc; pdfChapters = _ui.value.chapterPages
+                scale = 1.0; measured = false; paging = null
+                val base = withContext(Dispatchers.IO) { openReflow(pub, null) }
+                val initial = pub.readingOrder.getOrNull(page - 1)?.let { pub.locatorFromLink(it) }
+                _ui.update { it.copy(textView = true) }
+                _doc.value = Doc.Reflow(base.publication, base.factory, base.positions, base.resourceStart, initial)
+                notice("Text view. Pinch out or press Back for the page.")
+            } catch (e: Exception) {
+                Log.w(TAG, "text view failed", e)
+                notice("Couldn't make a text view of this PDF.")
+            } finally { entering = false }
+        }
+    }
+
+    fun exitTextView() {
+        val pdf = pdfDoc ?: return
+        val text = _doc.value as? Doc.Reflow
+        val page = textViewPage().coerceIn(1, pdf.doc.pageCount)
+        scale = 1.0; paging = null
+        rawToc = pdfToc; rawChapters = pdfChapters; positionCount = pdf.doc.pageCount
+        quietUntilNextChange = true
+        _ui.update {
+            it.copy(textView = false, page = page, pageLast = page, pageCount = pdf.doc.pageCount, toc = pdfToc, chapterPages = pdfChapters,
+                tocIndex = pdfToc.indexOfLast { e -> e.page != null && e.page <= page }.takeIf { i -> i >= 0 })
+        }
+        tts.stop()
+        lastLocator = null
+        _doc.value = Doc.Pdf(pdf.doc, page, pdf.trim)
+        pdfDoc = null
+        text?.publication?.close()
+        notice(null)
+    }
 
     // ---------------- chrome & panels ----------------
 
@@ -387,6 +576,16 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         if (_doc.value == null) return
         val u = _ui.value
         val seconds = pendingSeconds.also { pendingSeconds = 0 }
+        if (u.textView) {
+            val pdf = pdfDoc ?: return
+            val n = textViewPage()
+            val count = pdf.doc.pageCount
+            library.save(k, seconds) {
+                it.copy(progress = if (count <= 1) 0f else (n - 1f) / (count - 1f), locator = """{"page":$n}""", page = n, pages = count,
+                    finished = n >= count && count > 1)
+            }
+            return
+        }
         val progress = when (_doc.value) {
             is Doc.Reflow -> locator?.locations?.totalProgression?.toFloat() ?: frac(u)
             else -> frac(u)
@@ -411,6 +610,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     override fun onCleared() {
         saveNow(lastLocator)
+        pdfDoc?.doc?.close()
         tts.release()
         (_doc.value as? Doc.Pdf)?.doc?.close()
         (_doc.value as? Doc.Reflow)?.publication?.close()

@@ -126,7 +126,12 @@ fun PdfViewer(d: Doc.Pdf, vm: ReaderViewModel, settings: AppSettings, colors: Co
                         }
                     }
                 }
-                .pointerInput(Unit) { zoomGestures({ zoom }, { z, p -> zoom = z; pan = p }, { pan }) },
+                .pointerInput(Unit) {
+                    zoomGestures({ zoom }, { z, p -> zoom = z; pan = p }, { pan }) {
+                        // text wrap zoom: pinching in from the whole page opens the re-wrapped text instead
+                        if (s.wrapZoom) { vm.enterTextView(); true } else false
+                    }
+                },
         ) { index ->
             val pages = spreads[index]
             val current = index == pager.currentPage
@@ -196,14 +201,21 @@ private fun PdfPage(
 
 /** Pinch to zoom (1–5×) and pan while zoomed; single-finger drags pass through to the pager at 1×. */
 private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.zoomGestures(
-    zoom: () -> Float, set: (Float, Offset) -> Unit, pan: () -> Offset,
+    zoom: () -> Float, set: (Float, Offset) -> Unit, pan: () -> Offset, onPinchIn: () -> Boolean,
 ) {
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false)
+        var pinch = 1f
+        var handedOff = false
         do {
             val ev = awaitPointerEvent()
             val fingers = ev.changes.count { it.pressed }
             val z = zoom()
+            if (handedOff) { ev.changes.forEach { it.consume() }; continue }
+            if (fingers >= 2 && z <= 1.01f) {
+                pinch *= ev.calculateZoom()
+                if (pinch > 1.15f && onPinchIn()) { handedOff = true; ev.changes.forEach { it.consume() }; continue }
+            }
             if (fingers >= 2 || z > 1.01f) {
                 val nz = (z * ev.calculateZoom()).coerceIn(1f, 5f)
                 val maxX = size.width * (nz - 1) / 2

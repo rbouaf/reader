@@ -31,6 +31,8 @@ import androidx.core.view.WindowInsetsControllerCompat
 import androidx.fragment.app.FragmentActivity
 import androidx.fragment.compose.AndroidFragment
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import app.reader.data.Book
 import app.reader.data.TapSide
 import app.reader.looks.ChromeActions
@@ -67,9 +69,23 @@ class ReaderActivity : FragmentActivity() {
         }
         vm.open(intent.getStringExtra(EXTRA_KEY), intent.data.takeIf { intent.action == Intent.ACTION_VIEW })
         setContent { ReaderScreen(vm, onClose = { finish() }) }
+        debugHooks()
     }
 
-    override fun onResume() { super.onResume(); vm.setActive(true) }
+    /** Debug builds only: `adb shell am start … --ef debug.pinch 1.5` / `--ez debug.textview true` stand in for two-finger gestures. */
+    private fun debugHooks() {
+        if (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE == 0) return
+        val pinch = intent.getFloatExtra("debug.pinch", 0f)
+        val text = intent.getBooleanExtra("debug.textview", false)
+        if (pinch == 0f && !text) return
+        lifecycleScope.launch {
+            kotlinx.coroutines.delay(4000)
+            if (text) vm.enterTextView()
+            if (pinch != 0f) { vm.pinchStart(); for (i in 1..10) { vm.pinchBy(1 + (pinch - 1) * i / 10f); kotlinx.coroutines.delay(60) }; vm.pinchEnd() }
+        }
+    }
+
+    override fun onResume() { super.onResume(); vm.setActive(true); vm.tts.catchUp() }
     override fun onPause() { vm.setActive(false); super.onPause() }
 
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
@@ -120,6 +136,7 @@ private fun ReaderScreen(vm: ReaderViewModel, onClose: () -> Unit) {
                 when {
                     ui.panel != Panel.None -> vm.closePanel()
                     ui.chrome -> vm.hideChrome()
+                    ui.textView -> vm.exitTextView()
                     else -> onClose()
                 }
             }
@@ -162,6 +179,13 @@ private fun ReaderScreen(vm: ReaderViewModel, onClose: () -> Unit) {
                             scrubEnd = vm::scrubEnd,
                         ),
                     )
+                }
+
+                ui.notice?.let { n ->
+                    Box(Modifier.align(Alignment.Center).background(colors.paper)) { kit.PanelMessage(n) }
+                }
+                ui.zoomSize?.let { z ->
+                    Box(Modifier.align(Alignment.Center).background(colors.paper)) { kit.PanelMessage("$z px") }
                 }
 
                 if (ui.tts != TtsState.Off && !ui.chrome) {
