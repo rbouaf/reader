@@ -1,0 +1,43 @@
+package app.reader.ui
+
+import android.app.Activity
+import android.content.Context
+import android.os.VibratorManager
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.core.view.WindowCompat
+import app.reader.data.AppSettings
+import app.reader.theme.Haptics
+import app.reader.theme.LocalColors
+import app.reader.theme.LocalHaptics
+
+/** Haptics bound to the current view and settings, plus status/navigation bar icon colours. */
+@Composable
+fun AppChrome(settings: AppSettings, content: @Composable () -> Unit) {
+    val view = LocalView.current
+    val context = LocalContext.current
+    val s by rememberUpdatedState(settings)
+    val haptics = remember(view) {
+        val vm = context.getSystemService(Context.VIBRATOR_MANAGER_SERVICE) as? VibratorManager
+        Haptics(view, vm?.defaultVibrator, { s.haptics }, { s.pageTick })
+    }
+    val colors = LocalColors.current
+    if (!view.isInEditMode) {
+        SideEffect {
+            val window = (view.context as? Activity)?.window ?: return@SideEffect
+            WindowCompat.getInsetsController(window, view).apply {
+                isAppearanceLightStatusBars = !colors.isDark
+                isAppearanceLightNavigationBars = !colors.isDark
+            }
+            window.decorView.setBackgroundColor(android.graphics.Color.argb(
+                (colors.paper.alpha * 255).toInt(), (colors.paper.red * 255).toInt(), (colors.paper.green * 255).toInt(), (colors.paper.blue * 255).toInt()))
+        }
+    }
+    CompositionLocalProvider(LocalHaptics provides haptics, content = content)
+}

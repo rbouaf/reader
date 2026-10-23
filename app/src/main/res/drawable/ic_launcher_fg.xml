@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A page with a reading line: the readout cursor. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
+    <path android:strokeColor="#D5D8D2" android:strokeWidth="2.5" android:fillColor="#00000000"
+        android:pathData="M38,32 L70,32 L70,76 L38,76 Z" />
+    <path android:strokeColor="#D5D8D2" android:strokeWidth="2.5" android:pathData="M44,43 L64,43 M44,50 L64,50 M44,57 L58,57" />
+    <path android:fillColor="#D5D8D2" android:pathData="M44,64 L52,64 L52,69 L44,69 Z" />
+</vector>
