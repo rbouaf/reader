@@ -104,6 +104,15 @@ class EpubHost : Fragment() {
             },
             configuration = EpubNavigatorFragment.Configuration {
                 servedAssets = listOf("fonts/.*")
+                // links in the look's ink (underlined) rather than browser blue
+                style?.let {
+                    readiumCssRsProperties = org.readium.r2.navigator.epub.css.RsProperties(
+                        linkColor = org.readium.r2.navigator.epub.css.Color.Int(it.ink.toArgb()),
+                        visitedColor = org.readium.r2.navigator.epub.css.Color.Int(it.ink.toArgb()),
+                        selectionBackgroundColor = org.readium.r2.navigator.epub.css.Color.Int(it.highlight.toArgb()),
+                        selectionTextColor = org.readium.r2.navigator.epub.css.Color.Int(it.ink.toArgb()),
+                    )
+                }
                 for (face in BookFaces.all) addFontFamilyDeclaration(FontFamily(face.name)) {
                     when (val f = face.files) {
                         is BookFiles.Variable -> {
