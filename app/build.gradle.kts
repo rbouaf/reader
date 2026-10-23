@@ -36,6 +36,9 @@ android {
             isIncludeAndroidResources = true
             all {
                 it.maxHeapSize = "2g"
+                // screenshot filters, tracked so the configuration cache doesn't reuse old values
+                it.environment("LOOKS", providers.environmentVariable("LOOKS").getOrElse(""))
+                it.environment("SHOTS", providers.environmentVariable("SHOTS").getOrElse(""))
                 it.jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED", "--add-exports=java.base/jdk.internal.access=ALL-UNNAMED", "--add-opens=java.base/java.io=ALL-UNNAMED")
             }
         }

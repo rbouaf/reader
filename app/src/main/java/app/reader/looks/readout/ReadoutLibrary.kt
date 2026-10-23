@@ -421,7 +421,7 @@ private fun Summary(ui: LibraryUi) {
         Format.entries.forEach { f -> n.byFormat[f]?.let { line(f.label, it) } }
         Spacer(Modifier.height(g.lines(0.5f)))
         Row {
-            Text("folder size", style = RT.label(g, c), modifier = Modifier.width(g.ch(10)))
+            Text("size", style = RT.label(g, c), modifier = Modifier.width(g.ch(10)))
             Spacer(Modifier.width(g.ch(1)))
             Text(formatSize(n.bytes), style = RT.title(g, c))
         }

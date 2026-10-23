@@ -39,8 +39,8 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [36])
 class LookShots {
-    private val looks: List<Look> = System.getenv("LOOKS")?.split(',')?.map { Looks.byId(it.trim()) } ?: Looks.all
-    private val shots: Set<String> = System.getenv("SHOTS")?.split(',')?.map { it.trim() }?.toSet()
+    private val looks: List<Look> = System.getenv("LOOKS")?.takeIf { it.isNotBlank() }?.split(',')?.map { Looks.byId(it.trim()) } ?: Looks.all
+    private val shots: Set<String> = System.getenv("SHOTS")?.takeIf { it.isNotBlank() }?.split(',')?.map { it.trim() }?.toSet()
         ?: setOf("library", "settings", "chrome", "panel", "empty")
 
     private data class Size(val name: String, val q: String)

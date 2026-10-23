@@ -18,7 +18,8 @@ import java.util.zip.ZipOutputStream
  * (Markdown) or chapter lines (text); long stretches are split so pages stay fast.
  */
 object TextToEpub {
-    data class Chapter(val title: String?, val html: String)
+    /** One XHTML file. [anchors] are extra contents entries inside it (title, element id). */
+    data class Chapter(val title: String?, val html: String, val anchors: List<Pair<String, String>> = emptyList())
 
     fun convert(bytes: ByteArray, format: Format, title: String, author: String?, out: File) {
         val text = TextDecoding.decode(bytes).replace("\r\n", "\n").replace('\r', '\n')
@@ -33,13 +34,27 @@ object TextToEpub {
 
     private val extensions = listOf(TablesExtension.create(), StrikethroughExtension.create())
     private val parser = Parser.builder().extensions(extensions).build()
-    private val renderer = HtmlRenderer.builder().extensions(extensions).escapeHtml(true).build()
+
+    /** A renderer that gives headings ids h1, h2, … in document order, for contents links. */
+    private fun renderer(ids: MutableMap<Node, String>) = HtmlRenderer.builder().extensions(extensions).escapeHtml(true)
+        .attributeProviderFactory { org.commonmark.renderer.html.AttributeProvider { node, _, attrs -> ids[node]?.let { attrs["id"] = it } } }
+        .build()
 
     fun markdown(source: String): List<Chapter> {
         val body = source.replace(Regex("\\A---\\n.*?\\n---\\n", RegexOption.DOT_MATCHES_ALL), "")
         val doc = parser.parse(body)
-        // split on the highest heading level used more than once (usually # or ##)
-        val levels = generateSequence(doc.firstChild) { it.next }.filterIsInstance<Heading>().groupingBy { it.level }.eachCount()
+        val headings = generateSequence(doc.firstChild) { it.next }.filterIsInstance<Heading>().toList()
+        val ids = headings.withIndex().associate { (i, h) -> h as Node to "h${i + 1}" }.toMutableMap()
+        val renderer = renderer(ids)
+
+        // Most notes fit in one flow: no forced page breaks, contents link to heading anchors.
+        if (body.length < 60_000) {
+            val anchors = headings.filter { it.level <= 3 }.map { plainText(it) to ids.getValue(it) }
+            return listOf(Chapter(null, renderer.render(doc), anchors))
+        }
+
+        // Long documents split on the highest heading level used more than once.
+        val levels = headings.groupingBy { it.level }.eachCount()
         val splitLevel = (1..3).firstOrNull { (levels[it] ?: 0) > 1 } ?: (1..3).firstOrNull { levels.containsKey(it) }
         val chapters = mutableListOf<Chapter>()
         var title: String? = null
@@ -190,7 +205,10 @@ object TextToEpub {
   </spine>
 </package>""")
 
-            val toc = chapters.mapIndexedNotNull { i, c -> c.title?.let { """<li><a href="${ids[i]}.xhtml">${esc(it)}</a></li>""" } }
+            val toc = chapters.flatMapIndexed { i, c ->
+                listOfNotNull(c.title?.let { """<li><a href="${ids[i]}.xhtml">${esc(it)}</a></li>""" }) +
+                    c.anchors.map { (t, id) -> """<li><a href="${ids[i]}.xhtml#$id">${esc(t)}</a></li>""" }
+            }
                 .ifEmpty { listOf("""<li><a href="${ids[0]}.xhtml">${esc(title)}</a></li>""") }
             put("OEBPS/nav.xhtml", """<?xml version="1.0" encoding="UTF-8"?>
 <html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops"><head><title>${esc(title)}</title></head>
