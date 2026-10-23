@@ -63,6 +63,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.runtime.LaunchedEffect
 import app.reader.looks.ChoiceOption
+import app.reader.looks.FormField
 import app.reader.looks.Kit
 import app.reader.looks.LookCard
 import app.reader.looks.SheetAction
@@ -72,8 +73,9 @@ import app.reader.theme.LocalColors
 object TraceKit : Kit {
 
     @Composable
-    private fun Sized(content: @Composable (tablet: Boolean, twoColumn: Boolean) -> Unit) {
-        BoxWithConstraints(Modifier.fillMaxSize().background(colors().paper)) {
+    private fun Sized(ground: Boolean = true, content: @Composable (tablet: Boolean, twoColumn: Boolean) -> Unit) {
+        // dialogs pass ground = false so their translucent scrim shows the library beneath
+        BoxWithConstraints(Modifier.fillMaxSize().then(if (ground) Modifier.background(colors().paper) else Modifier)) {
             val g = Grid.of(maxWidth)
             CompositionLocalProvider(LocalGrid provides g) {
                 content(maxWidth >= 700.dp, maxWidth >= 1000.dp && maxWidth > maxHeight)
@@ -294,19 +296,54 @@ object TraceKit : Kit {
     @Composable
     override fun Sheet(title: String, subtitle: String?, actions: List<SheetAction>, onDismiss: () -> Unit) {
         Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
-            Sized { tablet, _ ->
+            Sized(ground = false) { tablet, _ ->
                 val g = grid(); val c = colors()
                 val insets = WindowInsets.safeDrawing.asPaddingValues()
                 Box(Modifier.fillMaxSize().background(c.paper.copy(alpha = 0.75f)).clickable(remember { MutableInteractionSource() }, null, onClick = onDismiss)) {
                     Column(
                         Modifier.align(Alignment.BottomCenter).then(if (tablet) Modifier.widthIn(max = g.ch(64)) else Modifier.fillMaxWidth())
-                            .background(c.paper).doubleRule(c.ink, top = true)
+                            .background(c.paper).then(if (tablet) Modifier.ruledBox(c.ink, double = true) else Modifier.doubleRule(c.ink, top = true))
                             .clickable(remember { MutableInteractionSource() }, null) {}
                             .padding(start = g.ch(2), end = g.ch(2), top = g.lines(1), bottom = g.lines(1) + insets.calculateBottomPadding()),
                     ) {
                         Text(title, style = RT.title(g, c))
                         if (subtitle != null) Text(subtitle, style = RT.label(g, c), modifier = Modifier.padding(bottom = g.lines(1)))
                         actions.forEach { a -> SheetButton(a) }
+                    }
+                }
+            }
+        }
+    }
+
+    /** The sheet's frame around `label:` text fields boxed in single rules, then `> Save` and a quiet `> Cancel`. */
+    @Composable
+    override fun Form(title: String, subtitle: String?, fields: List<FormField>, saveLabel: String, onSave: () -> Unit, onDismiss: () -> Unit) {
+        Dialog(onDismiss, DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)) {
+            Sized(ground = false) { tablet, _ ->
+                val g = grid(); val c = colors()
+                val insets = WindowInsets.safeDrawing.asPaddingValues()
+                Box(Modifier.fillMaxSize().background(c.paper.copy(alpha = 0.75f)).clickable(remember { MutableInteractionSource() }, null, onClick = onDismiss).imePadding()) {
+                    Column(
+                        Modifier.align(Alignment.BottomCenter).then(if (tablet) Modifier.widthIn(max = g.ch(64)) else Modifier.fillMaxWidth())
+                            .background(c.paper).then(if (tablet) Modifier.ruledBox(c.ink, double = true) else Modifier.doubleRule(c.ink, top = true))
+                            .clickable(remember { MutableInteractionSource() }, null) {}
+                            .padding(start = g.ch(2), end = g.ch(2), top = g.lines(1), bottom = g.lines(1) + insets.calculateBottomPadding()),
+                    ) {
+                        Text(title, style = RT.title(g, c))
+                        if (subtitle != null) Text(subtitle, style = RT.label(g, c), modifier = Modifier.padding(bottom = g.lines(0.5f)))
+                        fields.forEach { f ->
+                            Column(Modifier.padding(vertical = g.lines(0.5f))) {
+                                Label(f.label)
+                                BasicTextField(
+                                    f.value, f.onChange, singleLine = true, textStyle = RT.base(g, c), cursorBrush = SolidColor(c.ink),
+                                    modifier = Modifier.fillMaxWidth().ruledBox(c.rule, double = false).padding(horizontal = g.ch(1), vertical = 10.dp),
+                                )
+                                if (f.hint != null) Text(f.hint, style = RT.dim(g, c), modifier = Modifier.padding(top = 2.dp))
+                            }
+                        }
+                        Spacer(Modifier.height(g.lines(0.5f)))
+                        SheetButton(SheetAction(saveLabel, onClick = onSave))
+                        SheetButton(SheetAction("Cancel", quiet = true, onClick = onDismiss))
                     }
                 }
             }
