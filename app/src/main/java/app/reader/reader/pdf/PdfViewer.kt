@@ -50,6 +50,7 @@ import app.reader.data.Spread
 import app.reader.data.TapSide
 import app.reader.reader.Doc
 import app.reader.reader.PdfHit
+import app.reader.reader.MENU_BAND_DP
 import app.reader.reader.ReaderViewModel
 import app.reader.theme.Colors
 import kotlinx.coroutines.delay
@@ -115,15 +116,8 @@ fun PdfViewer(d: Doc.Pdf, vm: ReaderViewModel, settings: AppSettings, colors: Co
             modifier = Modifier.fillMaxSize()
                 .pointerInput(Unit) {
                     detectTapGestures { p ->
-                        val fx = p.x / size.width
-                        val fwdRight = s.tapSide == TapSide.Right
-                        when {
-                            vm.ui.value.chrome -> vm.hideChrome()
-                            zoom > 1.01f -> vm.toggleChrome()
-                            fx < 0.3f -> vm.turn(!fwdRight)
-                            fx > 0.7f -> vm.turn(fwdRight)
-                            else -> vm.toggleChrome()
-                        }
+                        if (zoom > 1.01f) { if (vm.ui.value.chrome) vm.hideChrome() else vm.toggleChrome(); return@detectTapGestures }
+                        vm.tap(p.x, p.y, size.width.toFloat(), size.height.toFloat(), MENU_BAND_DP.dp.toPx(), s.tapSide == TapSide.Right)
                     }
                 }
                 .pointerInput(Unit) {

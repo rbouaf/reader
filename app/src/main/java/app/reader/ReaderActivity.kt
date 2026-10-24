@@ -15,6 +15,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.safeDrawing
@@ -143,9 +145,14 @@ private fun ReaderScreen(vm: ReaderViewModel, onClose: () -> Unit) {
 
             Box(Modifier.fillMaxSize().background(colors.paper)) {
                 when (val d = doc) {
-                    is Doc.Reflow -> AndroidFragment<EpubHost>(Modifier.fillMaxSize().padding(WindowInsets.safeDrawing.asPaddingValues().let {
-                        androidx.compose.foundation.layout.PaddingValues(top = it.calculateTopPadding(), bottom = it.calculateBottomPadding())
-                    }))
+                    is Doc.Reflow -> {
+                        val safe = WindowInsets.safeDrawing.asPaddingValues()
+                        AndroidFragment<EpubHost>(Modifier.fillMaxSize().padding(top = safe.calculateTopPadding(), bottom = safe.calculateBottomPadding()))
+                        // the strips beside the camera and the gesture bar belong to the menu bands too
+                        val strip = Modifier.fillMaxWidth().clickable(remember { MutableInteractionSource() }, null) { vm.toggleChrome() }
+                        Box(strip.height(safe.calculateTopPadding()).align(Alignment.TopCenter))
+                        Box(strip.height(safe.calculateBottomPadding()).align(Alignment.BottomCenter))
+                    }
                     is Doc.Pdf -> PdfViewer(d, vm, settings, colors)
                     null -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                         kit.PanelMessage(ui.error ?: "Opening ${ui.title}")

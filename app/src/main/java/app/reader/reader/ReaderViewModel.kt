@@ -102,6 +102,9 @@ sealed interface Doc {
     class Pdf(val doc: PdfDoc, val initialPage: Int, val trim: Pair<android.graphics.RectF, android.graphics.RectF>) : Doc
 }
 
+/** Height of the bands along the top and bottom of the page that open the menu. */
+const val MENU_BAND_DP = 72
+
 @OptIn(ExperimentalReadiumApi::class)
 class ReaderViewModel(application: Application) : AndroidViewModel(application) {
     private val app = application.app
@@ -151,7 +154,8 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
             openedUri = uri
             val format = book?.format ?: Format.of(external?.lastPathSegment ?: "") ?: guessFormat(uri)
             val title = book?.title ?: Metadata.fromFileName(external?.lastPathSegment?.substringAfterLast('/') ?: "Book").title ?: "Book"
-            _ui.update { it.copy(title = title, author = book?.author, format = format) }
+            // opened from the library: start with the menu showing
+            _ui.update { it.copy(title = title, author = book?.author, format = format, chrome = book != null) }
             try {
                 val doc = withContext(Dispatchers.IO) {
                     when (format) {
@@ -528,6 +532,18 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     // ---------------- chrome & panels ----------------
 
     fun toggleChrome() = _ui.update { it.copy(chrome = !it.chrome) }
+
+    /** A tap on the page: the top and bottom bands open the menu, the sides turn, the middle toggles. */
+    fun tap(x: Float, y: Float, width: Float, height: Float, band: Float, forwardOnRight: Boolean) {
+        val fx = x / width
+        when {
+            _ui.value.chrome -> hideChrome()
+            y < band || y > height - band -> toggleChrome()
+            fx < 0.3f -> turn(!forwardOnRight)
+            fx > 0.7f -> turn(forwardOnRight)
+            else -> toggleChrome()
+        }
+    }
     fun hideChrome() { if (_ui.value.chrome) _ui.update { it.copy(chrome = false) } }
     fun openPanel(p: Panel) = _ui.update { it.copy(panel = p) }
     fun closePanel() = _ui.update { it.copy(panel = Panel.None) }

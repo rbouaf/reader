@@ -15,6 +15,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import app.reader.data.PageAnim
 import app.reader.data.Spread
 import app.reader.reader.Doc
+import app.reader.reader.MENU_BAND_DP
 import app.reader.reader.ReaderViewModel
 import app.reader.theme.BookFaces
 import app.reader.theme.BookFiles
@@ -152,15 +153,11 @@ class EpubHost : Fragment() {
         nav.addInputListener(object : InputListener {
             override fun onTap(event: TapEvent): Boolean {
                 val w = view.width.takeIf { it > 0 } ?: return false
-                val fx = event.point.x / w
-                val style = ReadingStyles.current.value
-                val fwdRight = style?.forwardOnRight ?: true
-                when {
-                    vm.ui.value.chrome -> vm.hideChrome()
-                    fx < 0.3f -> vm.turn(!fwdRight)
-                    fx > 0.7f -> vm.turn(fwdRight)
-                    else -> vm.toggleChrome()
-                }
+                val fwdRight = ReadingStyles.current.value?.forwardOnRight ?: true
+                // Readium's tap point is measured from the text area or from the margins depending on
+                // where the finger lands, so use the touch the container saw instead
+                val at = (view as PinchContainer).lastDown
+                vm.tap(at.x, at.y, w.toFloat(), view.height.toFloat(), MENU_BAND_DP * resources.displayMetrics.density, fwdRight)
                 return true
             }
         })
@@ -215,6 +212,8 @@ class EpubHost : Fragment() {
  */
 class PinchContainer(context: android.content.Context, private val vm: ReaderViewModel) : android.widget.FrameLayout(context) {
     private var pinching = false
+    /** Where the last finger went down, in this view's coordinates. */
+    val lastDown = android.graphics.PointF()
     private val detector = android.view.ScaleGestureDetector(context, object : android.view.ScaleGestureDetector.SimpleOnScaleGestureListener() {
         private var total = 1f
         override fun onScaleBegin(d: android.view.ScaleGestureDetector): Boolean {
@@ -228,6 +227,7 @@ class PinchContainer(context: android.content.Context, private val vm: ReaderVie
     private fun enabled() = (context.applicationContext as app.reader.ReaderApp).settings.current.wrapZoom
 
     override fun onInterceptTouchEvent(ev: android.view.MotionEvent): Boolean {
+        if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) lastDown.set(ev.x, ev.y)
         if (!enabled()) return false
         detector.onTouchEvent(ev)
         if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) pinching = false
