@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- The launcher glyph, for the status bar. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp" android:viewportWidth="24" android:viewportHeight="24">
+    <group android:translateX="-4.08" android:translateY="-4.16" android:scaleX="0.16" android:scaleY="0.16">
+        <path android:strokeColor="#FFFFFF" android:strokeWidth="12.5"
+            android:pathData="M88,54 A12,12 0 1,0 112,54 A12,12 0 1,0 88,54 Z" />
+        <path android:strokeColor="#FFFFFF" android:strokeWidth="12" android:strokeLineJoin="miter" android:strokeMiterLimit="4"
+            android:pathData="M51,137 L51,82 Q75,80 100,94 Q125,80 149,82 L149,137 Q125,135 100,160 Q75,135 51,137 Z" />
+        <path android:strokeColor="#FFFFFF" android:strokeWidth="12" android:pathData="M100,94 L100,160" />
+    </group>
+</vector>

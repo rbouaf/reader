@@ -1,9 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- A page with a reading line: the readout cursor. -->
+<!-- An open book with a reader's head above it. Drawn on a 200-unit grid that maps to the
+     icon's visible 72dp; also the themed-icon (monochrome) layer. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp" android:height="108dp" android:viewportWidth="108" android:viewportHeight="108">
-    <path android:strokeColor="#D5D8D2" android:strokeWidth="2.5" android:fillColor="#00000000"
-        android:pathData="M38,32 L70,32 L70,76 L38,76 Z" />
-    <path android:strokeColor="#D5D8D2" android:strokeWidth="2.5" android:pathData="M44,43 L64,43 M44,50 L64,50 M44,57 L58,57" />
-    <path android:fillColor="#D5D8D2" android:pathData="M44,64 L52,64 L52,69 L44,69 Z" />
+    <group android:translateX="18" android:translateY="18" android:scaleX="0.36" android:scaleY="0.36">
+        <path android:strokeColor="#FFFFFF" android:strokeWidth="12.5"
+            android:pathData="M88,54 A12,12 0 1,0 112,54 A12,12 0 1,0 88,54 Z" />
+        <path android:strokeColor="#FFFFFF" android:strokeWidth="12" android:strokeLineJoin="miter" android:strokeMiterLimit="4"
+            android:pathData="M51,137 L51,82 Q75,80 100,94 Q125,80 149,82 L149,137 Q125,135 100,160 Q75,135 51,137 Z" />
+        <path android:strokeColor="#FFFFFF" android:strokeWidth="12" android:pathData="M100,94 L100,160" />
+    </group>
 </vector>

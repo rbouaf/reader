@@ -1,22 +1,28 @@
 # Reader
 
-A personal EPUB / PDF / TXT / Markdown reader for Android, with five switchable looks. See `PLAN.md` for the design and architecture.
+An Android reader for EPUB, PDF, TXT and Markdown, with five looks.
 
-## Install on a device
+![The library in each look: Readout, Readout + trace, Editorial, Radar, Plotter](screenshots/library.png)
 
-1. On the phone or tablet, turn on Developer options, then USB debugging:
-   - Pixel: Settings → About phone → tap Build number 7 times.
-   - Samsung: Settings → About tablet → Software information → tap Build number 7 times.
-2. Connect it by USB and accept the "Allow USB debugging" prompt.
-3. Run:
-   ```
-   ./gw :app:assembleRelease && ~/Library/Android/sdk/platform-tools/adb install -r app/build/outputs/apk/release/app-release.apk
-   ```
-   `./gw` is gradlew with Android Studio's bundled Java.
+## Features
 
-On first launch, choose the folder that holds your books. Reading positions go into `<folder>/.reader/`, one file per device. Sync the folder between phone and tablet (Syncthing, for example) and positions follow.
+- Lists every book in a folder and its subfolders.
+- Five looks, each in light, dark and black.
+- Contents, search, read aloud, and a scrubber marked with chapters.
+- Reading positions are saved in the folder (`.reader/`, one file per device), so they follow it when you sync it between devices.
+
+## Install
+
+Needs Android 15 or later, USB debugging on the device, and Android Studio for its JDK.
+
+```
+./gw :app:assembleRelease
+adb install -r app/build/outputs/apk/release/app-release.apk
+```
+
+`./gw` is gradlew with Android Studio's JDK. On first launch, choose the folder that holds your books.
 
 ## Develop
 
-- `./gw :app:installDebug` installs a debug build on the connected device or emulator.
-- `LOOKS=readout ./gw :app:recordRoborazziDebug --tests app.reader.LookShots` renders screenshots of a look (or of all looks if `LOOKS` is unset) to `app/screens/`.
+- `./gw :app:installDebug` installs a debug build.
+- `LOOKS=readout ./gw :app:recordRoborazziDebug --tests app.reader.LookShots` renders one look to `app/screens/`. Leave out `LOOKS` for all of them.

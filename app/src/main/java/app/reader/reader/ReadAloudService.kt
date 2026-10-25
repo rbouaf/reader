@@ -87,7 +87,7 @@ class ReadAloudService : Service() {
 
         val open = PendingIntent.getActivity(this, 0, Intent(this, ReaderActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT), PendingIntent.FLAG_IMMUTABLE)
         val n = Notification.Builder(this, CHANNEL)
-            .setSmallIcon(R.drawable.ic_launcher_fg)
+            .setSmallIcon(R.drawable.ic_stat_reader)
             .setContentTitle(i.label.ifEmpty { i.title })
             .setContentText(i.title)
             .setContentIntent(open)
