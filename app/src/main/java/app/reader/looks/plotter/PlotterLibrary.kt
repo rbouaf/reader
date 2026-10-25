@@ -97,7 +97,7 @@ fun PlotterLibrary(ui: LibraryUi, on: LibraryActions) {
     BoxWithConstraints(Modifier.fillMaxSize().mmGrid(c)) {
         val shape = PShape(tablet = maxWidth >= 700.dp, wide = maxWidth >= 1000.dp && maxWidth > maxHeight)
         CompositionLocalProvider(LocalShape provides shape) {
-            if (shape.wide) WideSheet(ui, on) else TallSheet(ui, on, maxHeight)
+            if (shape.wide) WideSheet(ui, on) else TallSheet(ui, on)
         }
     }
 }
@@ -106,17 +106,16 @@ fun PlotterLibrary(ui: LibraryUi, on: LibraryActions) {
 
 /** Phone and tablet portrait: one scrolling drawing; the frame's top and bottom scroll with it. */
 @Composable
-private fun TallSheet(ui: LibraryUi, on: LibraryActions, viewH: Dp) {
+private fun TallSheet(ui: LibraryUi, on: LibraryActions) {
     val c = colors(); val shape = LocalShape.current
     val insets = WindowInsets.safeDrawing.asPaddingValues()
     val ld = LocalLayoutDirection.current
-    val side = if (shape.tablet) 34.dp else 18.dp
-    val top = if (shape.tablet) 34.dp else 20.dp
-    val bottom = if (shape.tablet) 34.dp else 22.dp
+    val side = if (shape.tablet) 20.dp else 12.dp
+    val top = if (shape.tablet) 20.dp else 12.dp
+    val bottom = if (shape.tablet) 20.dp else 14.dp
     val padX = if (shape.tablet) 22.dp else 13.dp
     val padTop = if (shape.tablet) 22.dp else 14.dp
     val padBottom = if (shape.tablet) 26.dp else 18.dp
-    val cols = if (shape.tablet) 6 else 4
     val sStart = side + insets.calculateStartPadding(ld)
     val sEnd = side + insets.calculateEndPadding(ld)
 
@@ -148,16 +147,13 @@ private fun TallSheet(ui: LibraryUi, on: LibraryActions, viewH: Dp) {
             state = state,
             contentPadding = PaddingValues(top = insets.calculateTopPadding(), bottom = insets.calculateBottomPadding()),
         ) {
-            item(key = "zt") { ZoneStrip(cols, top = true, height = top, start = sStart, end = sEnd) }
+            item(key = "zt") { Spacer(Modifier.height(top)) }
             item(key = "head") { Box(Modifier.slice(first = true)) { TitleBlock(ui, on) } }
             item(key = "now") { Box(Modifier.slice()) { Now(ui, on) } }
             index(ui, on) { content -> Box(Modifier.slice()) { content() } }
             item(key = "foot") { Box(Modifier.slice(last = true).height(with(density) { extra.toDp() })) }
-            item(key = "zb") { ZoneStrip(cols, top = false, height = bottom, start = sStart, end = sEnd) }
+            item(key = "zb") { Spacer(Modifier.height(bottom)) }
         }
-        // zone letters in the side margins stay put while the drawing scrolls past them
-        val zone = if (shape.tablet) viewH / 4.8f else 280.dp
-        ZoneSides(Modifier.fillMaxSize(), y0 = insets.calculateTopPadding() + top, zone = zone, start = sStart, end = sEnd)
     }
 }
 
@@ -166,10 +162,9 @@ private fun TallSheet(ui: LibraryUi, on: LibraryActions, viewH: Dp) {
 private fun WideSheet(ui: LibraryUi, on: LibraryActions) {
     val c = colors()
     val insets = WindowInsets.safeDrawing.asPaddingValues()
-    val tm = rememberTextMeasurer()
     val ld = LocalLayoutDirection.current
-    // the mockup's 34dp margin, but the system bars eat into it rather than add to it (the zone marks need ~20dp)
-    fun margin(inset: Dp) = maxOf(34.dp, inset + 20.dp)
+    // a narrow margin round the frame; the system bars eat into it rather than add to it
+    fun margin(inset: Dp) = maxOf(20.dp, inset + 8.dp)
     Box(
         Modifier.fillMaxSize().padding(
             start = margin(insets.calculateStartPadding(ld)), top = margin(insets.calculateTopPadding()),
@@ -177,9 +172,7 @@ private fun WideSheet(ui: LibraryUi, on: LibraryActions) {
         ),
     ) {
         Box(
-            Modifier.fillMaxSize()
-                .drawBehind { zones(tm, c.mute, c.ink, cols = 8, rows = 6) }
-                .penBox(c.ink, HV).padding(HV),
+            Modifier.fillMaxSize().penBox(c.ink, HV).padding(HV),
         ) {
             Row(Modifier.fillMaxSize()) {
                 BoxWithConstraints(Modifier.width(450.dp + 22.dp).fillMaxHeight()) {
@@ -205,76 +198,6 @@ private fun WideSheet(ui: LibraryUi, on: LibraryActions) {
                 ) { index(ui, on) { it() } }
             }
         }
-    }
-}
-
-/** Zone numbers along the top or bottom of the frame, with a short tick at each boundary. */
-@Composable
-private fun ZoneStrip(cols: Int, top: Boolean, height: Dp, start: Dp, end: Dp) {
-    val c = colors()
-    val tm = rememberTextMeasurer()
-    Canvas(Modifier.fillMaxWidth().height(height).padding(start = start, end = end)) {
-        val w = size.width
-        val hl = pen(HL)
-        val band = 18.dp.toPx()
-        val y0 = if (top) size.height - 1.dp.toPx() - band else 1.dp.toPx()
-        val style = PT.mono(10.sp, c.mute)
-        for (i in 0 until cols) {
-            val x0 = w * i / cols; val x1 = w * (i + 1) / cols
-            val r = tm.measure("${i + 1}", style)
-            drawText(r, topLeft = Offset((x0 + x1) / 2 - r.size.width / 2, y0 + band / 2 - r.size.height / 2))
-            if (i > 0) {
-                val tick = 7.dp.toPx()
-                if (top) vLine(c.ink, x0, size.height - tick, size.height, hl) else vLine(c.ink, x0, 0f, tick, hl)
-            }
-        }
-    }
-}
-
-/** Zone letters A–F in the side margins, [zone] apart, starting at [y0]. */
-@Composable
-private fun ZoneSides(modifier: Modifier, y0: Dp, zone: Dp, start: Dp, end: Dp) {
-    val c = colors()
-    val tm = rememberTextMeasurer()
-    Canvas(modifier) {
-        val hl = pen(HL)
-        val style = PT.mono(10.sp, c.mute)
-        val z = zone.toPx(); val top = y0.toPx()
-        val lx = start.toPx(); val rx = size.width - end.toPx()
-        val tick = 7.dp.toPx()
-        for (i in 0 until 6) {
-            val a = top + i * z
-            if (a > size.height) break
-            val r = tm.measure("${'A' + i}", style)
-            val cy = a + z / 2 - r.size.height / 2
-            drawText(r, topLeft = Offset(lx - 9.dp.toPx() - r.size.width / 2, cy))
-            drawText(r, topLeft = Offset(rx + 9.dp.toPx() - r.size.width / 2, cy))
-            if (i > 0) { hLine(c.ink, lx - tick, lx, a, hl); hLine(c.ink, rx, rx + tick, a, hl) }
-        }
-    }
-}
-
-/** All four zone margins around a fixed frame (drawn outside the element's bounds). */
-private fun DrawScope.zones(tm: TextMeasurer, mute: Color, ink: Color, cols: Int, rows: Int) {
-    val hl = pen(HL)
-    val style = PT.mono(10.sp, mute)
-    val w = size.width; val h = size.height
-    val off = 10.dp.toPx(); val tick = 7.dp.toPx()
-    for (i in 0 until cols) {
-        val x0 = w * i / cols; val x1 = w * (i + 1) / cols
-        val r = tm.measure("${i + 1}", style)
-        val x = (x0 + x1) / 2 - r.size.width / 2
-        drawText(r, topLeft = Offset(x, -off - r.size.height / 2))
-        drawText(r, topLeft = Offset(x, h + off - r.size.height / 2))
-        if (i > 0) { vLine(ink, x0, -tick, 0f, hl); vLine(ink, x0, h, h + tick, hl) }
-    }
-    for (i in 0 until rows) {
-        val y0 = h * i / rows; val y1 = h * (i + 1) / rows
-        val r = tm.measure("${'A' + i}", style)
-        val y = (y0 + y1) / 2 - r.size.height / 2
-        drawText(r, topLeft = Offset(-off - r.size.width / 2, y))
-        drawText(r, topLeft = Offset(w + off - r.size.width / 2, y))
-        if (i > 0) { hLine(ink, -tick, 0f, y0, hl); hLine(ink, w, w + tick, y0, hl) }
     }
 }
 

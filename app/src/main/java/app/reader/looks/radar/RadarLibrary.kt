@@ -108,7 +108,7 @@ fun RadarLibrary(ui: LibraryUi, on: LibraryActions) {
                     LazyColumn(
                         Modifier.weight(1f).fillMaxHeight(),
                         contentPadding = PaddingValues(top = insets.calculateTopPadding() + 16.dp, bottom = insets.calculateBottomPadding() + 64.dp),
-                    ) { index(ui, on, orders, 58.dp) }
+                    ) { index(ui, on, orders, 8.dp) }
                 }
             } else {
                 val side = if (shape.tablet) maxOf(40.dp, (maxWidth - 720.dp) / 2) else 16.dp

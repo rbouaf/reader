@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -53,6 +54,7 @@ import app.reader.data.Sort
 import app.reader.data.formatSize
 import app.reader.looks.LibraryActions
 import app.reader.looks.LibraryUi
+import app.reader.looks.common.FitHeight
 import app.reader.looks.openedLabel
 import app.reader.looks.percent
 import app.reader.theme.Colors
@@ -71,17 +73,21 @@ fun ReadoutLibrary(ui: LibraryUi, on: LibraryActions, appName: String = "readout
             val side = if (shape.tablet) g.ch(4) else g.ch(2)
             if (shape.twoColumn) {
                 Row(Modifier.fillMaxSize().padding(horizontal = side), horizontalArrangement = Arrangement.spacedBy(g.ch(5))) {
-                    Column(
-                        Modifier.width(g.ch(50)).fillMaxSize().verticalScroll(rememberScrollState())
-                            .padding(top = insets.calculateTopPadding() + g.lines(1.5f), bottom = g.lines(3)),
-                    ) {
-                        Head(ui, on, appName)
-                        Record(ui, on)
-                        if (ui.loaded && !ui.isEmpty) Summary(ui)
+                    BoxWithConstraints(Modifier.width(g.ch(50)).fillMaxHeight()) {
+                        val top = insets.calculateTopPadding() + g.lines(1.5f)
+                        // the header and the whole record fit the first screen; the summary may need a scroll
+                        val budget = maxHeight - top - insets.calculateBottomPadding() - g.lines(0.5f)
+                        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = top, bottom = g.lines(3))) {
+                            FitHeight(budget, levels = 6) { t ->
+                                Head(ui, on, appName, t)
+                                Record(ui, on, t)
+                            }
+                            if (ui.loaded && !ui.isEmpty) Summary(ui)
+                        }
                     }
                     LazyColumn(
                         Modifier.weight(1f).fillMaxSize(),
-                        contentPadding = PaddingValues(top = insets.calculateTopPadding() + g.lines(3.5f) + 10.dp, bottom = insets.calculateBottomPadding() + g.lines(3)),
+                        contentPadding = PaddingValues(top = insets.calculateTopPadding() + g.lines(1) + 10.dp, bottom = insets.calculateBottomPadding() + g.lines(3)),
                     ) { index(ui, on, shape) }
                 }
             } else {
@@ -106,15 +112,22 @@ fun ReadoutLibrary(ui: LibraryUi, on: LibraryActions, appName: String = "readout
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Head(ui: LibraryUi, on: LibraryActions, appName: String) {
+private fun Head(ui: LibraryUi, on: LibraryActions, appName: String, t: Int = 0) {
     val g = grid(); val c = colors()
     Row(Modifier.fillMaxWidth().height(44.dp).offset(y = (-12).dp), verticalAlignment = Alignment.CenterVertically) {
         Text("reader / $appName", style = RT.label(g, c), modifier = Modifier.weight(1f))
         TextButton("Settings", on.settings)
     }
-    Text("Library", style = RT.double(g, c), modifier = Modifier.padding(top = g.lines(1) - 12.dp))
+    // tighter levels: the sort choice moves up beside the title, and the gaps close
+    val sortInline = t >= 1 && ui.folder != null
+    if (sortInline) {
+        Row(Modifier.fillMaxWidth().padding(top = g.lines(0.5f) - 12.dp)) {
+            Text("Library", style = RT.double(g, c), modifier = Modifier.weight(1f).alignByBaseline())
+            SortChoice(ui, on, Modifier.alignByBaseline())
+        }
+    } else Text("Library", style = RT.double(g, c), modifier = Modifier.padding(top = g.lines(1) - 12.dp))
     if (ui.folder == null) return
-    Fields(Modifier.padding(top = g.lines(1))) {
+    Fields(Modifier.padding(top = if (t >= 1) g.lines(0.5f) else g.lines(1))) {
         field("folder") { Text(ui.folder, style = RT.base(g, c)) }
         field("status") {
             val n = ui.counts
@@ -127,17 +140,22 @@ private fun Head(ui: LibraryUi, on: LibraryActions, appName: String) {
                 style = RT.base(g, c),
             )
         }
-        field("sort by") {
-            FlowRow(Modifier.offset(y = (-12).dp), horizontalArrangement = Arrangement.spacedBy(g.ch(1))) {
-                listOf(Sort.Recent to "recent", Sort.Title to "title", Sort.Author to "author").forEach { (s, label) ->
-                    val sel = ui.sort == s
-                    Box(Modifier.heightIn(min = 44.dp).clickable { on.sort(s) }, contentAlignment = Alignment.CenterStart) {
-                        Text(
-                            (if (sel) "(*) " else "( ) ") + label,
-                            style = if (sel) RT.title(g, c) else RT.base(g, c).copy(color = c.mute),
-                        )
-                    }
-                }
+        if (!sortInline) field("sort by") { SortChoice(ui, on, Modifier.offset(y = (-12).dp)) }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SortChoice(ui: LibraryUi, on: LibraryActions, modifier: Modifier = Modifier) {
+    val g = grid(); val c = colors()
+    FlowRow(modifier, horizontalArrangement = Arrangement.spacedBy(g.ch(1))) {
+        listOf(Sort.Recent to "recent", Sort.Title to "title", Sort.Author to "author").forEach { (s, label) ->
+            val sel = ui.sort == s
+            Box(Modifier.heightIn(min = 44.dp).clickable { on.sort(s) }, contentAlignment = Alignment.CenterStart) {
+                Text(
+                    (if (sel) "(*) " else "( ) ") + label,
+                    style = if (sel) RT.title(g, c) else RT.base(g, c).copy(color = c.mute),
+                )
             }
         }
     }
@@ -181,7 +199,7 @@ fun TextButton(label: String, onClick: () -> Unit, modifier: Modifier = Modifier
 private fun chapterName(s: String) = s.replace(Regex("^[IVXLC]+\\.\\s*|^Chapter \\d+\\.?\\s*", RegexOption.IGNORE_CASE), "")
 
 @Composable
-private fun Record(ui: LibraryUi, on: LibraryActions) {
+private fun Record(ui: LibraryUi, on: LibraryActions, t: Int = 0) {
     val g = grid(); val c = colors()
     when {
         ui.folder == null -> RecordBox("record 000", "no folder", onClick = on.chooseFolder, go = "> Choose a folder", goRight = "") {
@@ -200,13 +218,19 @@ private fun Record(ui: LibraryUi, on: LibraryActions) {
             val st = b.state
             RecordBox(
                 "record 001", "now reading", onClick = { on.open(b) }, onLongClick = { on.hold(b) },
+                top = if (t >= 1) g.lines(1.5f) else g.lines(2), gap = if (t >= 1) g.lines(0.5f) else g.lines(1),
                 go = "> Continue reading",
                 goRight = st.page?.let { p -> st.pages?.let { "page $p of $it" } ?: "page $p" } ?: "",
             ) {
-                Text(b.title, style = RT.double(g, c).copy(lineBreak = LineBreak.Heading))
-                b.author?.let { Text(it, style = RT.dim(g, c)) }
-                Fields(Modifier.padding(top = g.lines(1))) {
-                    field("file") { Text(b.path, style = RT.base(g, c)) }
+                // tighter levels: 1 closes gaps, 2 shrinks the chart, 3 puts the path on one line,
+                // 4 caps the title at two lines, 5 sets it smaller
+                Text(
+                    b.title, style = (if (t >= 5) RT.title(g, c) else RT.double(g, c)).copy(lineBreak = LineBreak.Heading),
+                    maxLines = if (t >= 4) 2 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis,
+                )
+                b.author?.let { Text(it, style = RT.dim(g, c), maxLines = if (t >= 4) 1 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis) }
+                Fields(Modifier.padding(top = if (t >= 1) g.lines(0.5f) else g.lines(1))) {
+                    field("file") { Text(b.path, style = RT.base(g, c), maxLines = if (t >= 3) 1 else Int.MAX_VALUE, overflow = TextOverflow.MiddleEllipsis) }
                     field("size") { Text("${formatSize(b.size)} ${b.format.label}", style = RT.base(g, c)) }
                     field("opened") { Text(openedLabel(st.openedAt) ?: "never", style = RT.base(g, c)) }
                     field("chapter") {
@@ -234,13 +258,14 @@ private fun Record(ui: LibraryUi, on: LibraryActions) {
 @Composable
 fun RecordBox(
     tag: String, tagNote: String, onClick: () -> Unit, onLongClick: (() -> Unit)? = null,
-    go: String, goRight: String, modifier: Modifier = Modifier, body: @Composable () -> Unit,
+    go: String, goRight: String, modifier: Modifier = Modifier,
+    top: Dp = grid().lines(2), gap: Dp = grid().lines(1), body: @Composable () -> Unit,
 ) {
     val g = grid(); val c = colors()
     val src = remember { MutableInteractionSource() }
     val pressed by src.collectIsPressedAsState()
     val border = 3.dp
-    Box(modifier.fillMaxWidth().padding(top = g.lines(2))) {
+    Box(modifier.fillMaxWidth().padding(top = top)) {
         Column(
             Modifier.fillMaxWidth().ruledBox(c.ink, double = true)
                 .combinedClickable(src, null, onLongClick = onLongClick, onClick = onClick)
@@ -248,7 +273,7 @@ fun RecordBox(
         ) {
             Column(Modifier.padding(horizontal = g.ch(2) - border)) { body() }
             Row(
-                Modifier.padding(top = g.lines(1)).fillMaxWidth().heightIn(min = g.lines(2.5f))
+                Modifier.padding(top = gap).fillMaxWidth().heightIn(min = g.lines(2.5f))
                     .background(if (pressed) c.paper else c.ink).padding(horizontal = g.ch(2) - border),
                 verticalAlignment = Alignment.CenterVertically,
             ) {

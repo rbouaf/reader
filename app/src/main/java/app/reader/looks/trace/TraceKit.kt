@@ -66,6 +66,7 @@ import app.reader.looks.ChoiceOption
 import app.reader.looks.FormField
 import app.reader.looks.Kit
 import app.reader.looks.LookCard
+import app.reader.looks.common.CardRows
 import app.reader.looks.SheetAction
 import app.reader.theme.LocalColors
 
@@ -268,17 +269,7 @@ object TraceKit : Kit {
     @Composable
     override fun LookPicker(cards: List<LookCard>, current: String, onPick: (String) -> Unit) {
         val g = grid()
-        BoxWithConstraints(Modifier.fillMaxWidth().padding(vertical = g.lines(0.5f))) {
-            if (maxWidth >= 500.dp) {
-                Row(horizontalArrangement = Arrangement.spacedBy(g.ch(1))) {
-                    cards.forEach { LookCardView(it, it.id == current, Modifier.weight(1f)) { onPick(it.id) } }
-                }
-            } else {
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(g.ch(2))) {
-                    cards.forEach { LookCardView(it, it.id == current, Modifier.width(112.dp)) { onPick(it.id) } }
-                }
-            }
-        }
+        CardRows(cards, g.ch(1), Modifier.padding(vertical = g.lines(0.5f))) { card, m -> LookCardView(card, card.id == current, m) { onPick(card.id) } }
     }
 
     @Composable

@@ -63,34 +63,44 @@ import app.reader.data.Sort
 import app.reader.data.formatSize
 import app.reader.looks.LibraryActions
 import app.reader.looks.LibraryUi
+import app.reader.looks.common.FitHeight
 import app.reader.looks.openedLabel
 import app.reader.looks.percent
 import app.reader.theme.Fonts
 import app.reader.theme.LocalColors
 import kotlin.math.roundToInt
 
-/** The mockup's three breakpoints, resolved to the sizes its CSS uses at each. */
-data class Dims(val tablet: Boolean, val twoColumn: Boolean) {
+/**
+ * The mockup's three breakpoints, resolved to the sizes its CSS uses at each. [t] tightens the
+ * landscape left column, one level at a time, until the now-reading record fits (see FitHeight):
+ * 1 closes the gaps and puts the sort choice beside the title, 2 shrinks the chart, 3 puts the
+ * path on one line and drops the sittings line, 4 caps the title at two lines, 5 sets the title,
+ * figure and chart smaller.
+ */
+data class Dims(val tablet: Boolean, val twoColumn: Boolean, val t: Int = 0) {
     private val portraitTablet get() = tablet && !twoColumn
     val gut = if (tablet) 40.dp else 16.dp
     val lw = if (tablet) 96.dp else 84.dp
-    val h1 = when { twoColumn -> 48.sp; tablet -> 56.sp; else -> 44.sp }
-    val h1Top = if (twoColumn) 8.dp else 14.dp
-    val fieldsTop = if (twoColumn) 12.dp else 16.dp
-    val fieldPadTop = if (twoColumn) 6.dp else 8.dp
-    val fieldPadBottom = if (twoColumn) 5.dp else 7.dp
+    val h1 = when { t >= 5 -> 40.sp; twoColumn -> 48.sp; tablet -> 56.sp; else -> 44.sp }
+    val h1Top = when { t >= 1 -> 2.dp; twoColumn -> 8.dp; else -> 14.dp }
+    val fieldsTop = when { t >= 1 -> 6.dp; twoColumn -> 12.dp; else -> 16.dp }
+    val fieldPadTop = when { t >= 1 -> 2.dp; twoColumn -> 6.dp; else -> 8.dp }
+    val fieldPadBottom = when { t >= 1 -> 1.dp; twoColumn -> 5.dp; else -> 7.dp }
     val dt = if (tablet) 18.sp else 17.sp
     val dd = if (tablet) 13.sp else 12.5.sp
-    val recTop = if (twoColumn) 34.dp else 40.dp
-    val recPadTop = when { twoColumn -> 22.dp; tablet -> 26.dp; else -> 24.dp }
+    val recTop = when { t >= 1 -> 26.dp; twoColumn -> 34.dp; else -> 40.dp }
+    val recPadTop = when { t >= 1 -> 16.dp; twoColumn -> 22.dp; tablet -> 26.dp; else -> 24.dp }
     val recSide = if (tablet) 22.dp else 16.dp
-    val recTitle = when { twoColumn -> 34.sp; tablet -> 38.sp; else -> 33.sp }
+    val recTitle = when { t >= 5 -> 27.sp; twoColumn -> 34.sp; tablet -> 38.sp; else -> 33.sp }
     val recAuth = if (tablet) 21.sp else 19.sp
-    val recFieldsTop = if (twoColumn) 12.dp else 18.dp
-    val goTop = when { twoColumn -> 14.dp; tablet -> 22.dp; else -> 20.dp }
+    val recFieldsTop = when { t >= 1 -> 8.dp; twoColumn -> 12.dp; else -> 18.dp }
+    val goTop = when { t >= 1 -> 10.dp; twoColumn -> 14.dp; tablet -> 22.dp; else -> 20.dp }
     val goH = if (twoColumn) 50.dp else 54.dp
-    val fig = when { twoColumn -> 54.sp; tablet -> 60.sp; else -> 50.sp }
-    val chartH = when { twoColumn -> 78.dp; portraitTablet -> 120.dp; else -> 96.dp }
+    val fig = when { t >= 5 -> 42.sp; twoColumn -> 54.sp; tablet -> 60.sp; else -> 50.sp }
+    val chartH = when { t >= 5 -> 40.dp; t >= 2 -> 52.dp; t >= 1 -> 64.dp; twoColumn -> 78.dp; portraitTablet -> 120.dp; else -> 96.dp }
+    val sortInline get() = t >= 1
+    val clipPath get() = t >= 3
+    val clipTitle get() = t >= 4
     val colF = when { twoColumn -> 40.dp; tablet -> 44.dp; else -> 38.dp }
     val colX = if (twoColumn) 92.dp else 96.dp
     val colTr = when { twoColumn -> 132.dp; tablet -> 150.dp; else -> 74.dp }
@@ -110,13 +120,21 @@ fun EditorialLibrary(ui: LibraryUi, on: LibraryActions) {
         val agg = remember(ui.all) { aggregate(ui.all) }
         if (d.twoColumn) {
             Row(Modifier.fillMaxSize().padding(horizontal = d.gut), horizontalArrangement = Arrangement.spacedBy(56.dp)) {
-                Column(
-                    Modifier.width(440.dp).fillMaxHeight().verticalScroll(rememberScrollState())
-                        .padding(top = insets.calculateTopPadding() + 22.dp, bottom = insets.calculateBottomPadding() + 64.dp),
-                ) {
-                    Head(ui, on, d)
-                    Record(ui, on, d)
-                    if (ui.loaded && ui.all.isNotEmpty()) Summary(ui, agg, d)
+                BoxWithConstraints(Modifier.width(440.dp).fillMaxHeight()) {
+                    val top = insets.calculateTopPadding() + 22.dp
+                    // the header and the whole record fit the first screen; the summary may need a scroll
+                    val budget = maxHeight - top - insets.calculateBottomPadding() - 12.dp
+                    Column(
+                        Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                            .padding(top = top, bottom = insets.calculateBottomPadding() + 64.dp),
+                    ) {
+                        FitHeight(budget, levels = 6) { t ->
+                            val dt = d.copy(t = t)
+                            Head(ui, on, dt)
+                            Record(ui, on, dt)
+                        }
+                        if (ui.loaded && ui.all.isNotEmpty()) Summary(ui, agg, d)
+                    }
                 }
                 LazyColumn(
                     Modifier.weight(1f).fillMaxHeight(),
@@ -151,7 +169,13 @@ private fun Head(ui: LibraryUi, on: LibraryActions, d: Dims) {
             Text("Reader, a report", style = ET.it(c, 18.sp), modifier = Modifier.weight(1f))
             EdButton("Settings", on.settings, gear = true)
         }
-        Text(
+        val sortable = ui.folder != null && ui.loaded && ui.all.isNotEmpty()
+        if (d.sortInline && sortable) {
+            Row(Modifier.fillMaxWidth().padding(top = d.h1Top)) {
+                Text("Library", style = ET.disp(c, d.h1, 1f, tracking = -0.012f), modifier = Modifier.weight(1f).alignByBaseline())
+                SortChoice(ui, on, Modifier.alignByBaseline())
+            }
+        } else Text(
             "Library", style = ET.disp(c, d.h1, 1f, tracking = -0.012f),
             modifier = Modifier.padding(top = d.h1Top),
         )
@@ -179,22 +203,25 @@ private fun Head(ui: LibraryUi, on: LibraryActions, d: Dims) {
                     )
                 }
             }
-            if (ui.loaded && ui.all.isNotEmpty()) field("sort by", center = true) { SortChoice(ui, on) }
+            if (sortable && !d.sortInline) field("sort by", center = true) { SortChoice(ui, on) }
         }
     }
 }
 
 @Composable
-private fun Value(d: Dims, text: String, color: androidx.compose.ui.graphics.Color = colors().ink) {
-    Text(text, style = ET.mono(colors(), d.dd, color = color))
+private fun Value(d: Dims, text: String, color: androidx.compose.ui.graphics.Color = colors().ink, oneLine: Boolean = false) {
+    Text(
+        text, style = ET.mono(colors(), d.dd, color = color),
+        maxLines = if (oneLine) 1 else Int.MAX_VALUE, overflow = TextOverflow.MiddleEllipsis,
+    )
 }
 
 /** Sort as a printed choice: a filled pen head marks the order in force. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun SortChoice(ui: LibraryUi, on: LibraryActions) {
+private fun SortChoice(ui: LibraryUi, on: LibraryActions, modifier: Modifier = Modifier) {
     val c = colors()
-    FlowRow(Modifier.bleedV(12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+    FlowRow(modifier.bleedV(12.dp), horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         listOf(Sort.Recent to "recent", Sort.Title to "title", Sort.Author to "author").forEach { (s, label) ->
             val sel = ui.sort == s
             Row(
@@ -366,10 +393,18 @@ private fun CurrentRecord(b: Book, on: LibraryActions, d: Dims) {
         go = "Continue reading",
         goRight = st.page?.let { p -> st.pages?.let { "page $p of $it" } ?: "page $p" } ?: "",
     ) {
-        Text(b.title, style = ET.disp(c, d.recTitle, 1.02f, tracking = -0.006f).copy(lineBreak = LineBreak.Heading))
-        b.author?.let { Text(it, style = ET.it(c, d.recAuth, 1.2f), modifier = Modifier.padding(top = 6.dp)) }
+        Text(
+            b.title, style = ET.disp(c, d.recTitle, 1.02f, tracking = -0.006f).copy(lineBreak = LineBreak.Heading),
+            maxLines = if (d.clipTitle) 2 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis,
+        )
+        b.author?.let {
+            Text(
+                it, style = ET.it(c, d.recAuth, 1.2f), modifier = Modifier.padding(top = if (d.t >= 1) 2.dp else 6.dp),
+                maxLines = if (d.clipTitle) 1 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis,
+            )
+        }
         Fields(d, Modifier.padding(top = d.recFieldsTop), ruleBelow = false) {
-            field("file") { Value(d, b.path) }
+            field("file") { Value(d, b.path, oneLine = d.clipPath) }
             field("size") {
                 Text(
                     buildAnnotatedString { append(formatSize(b.size)); withStyle(SpanStyle(color = c.mute)) { append(" " + b.format.label.uppercase()) } },
@@ -384,13 +419,13 @@ private fun CurrentRecord(b: Book, on: LibraryActions, d: Dims) {
                     else st.chapter?.let(::chapterName) ?: "not indexed",
                 )
             }
-            field("sittings") { Value(d, "${h.sittings.size} in 16 weeks") }
+            if (!d.clipPath) field("sittings") { Value(d, "${h.sittings.size} in 16 weeks") }
         }
         // the read row: the big figure under its label, the channel beside it
         Row(Modifier.fillMaxWidth().drawBehind { dashedH(c.rule, 0.5f) }.padding(top = d.fieldPadTop)) {
             Column(Modifier.width(d.lw)) {
                 Text("read", style = ET.it(c, d.dt))
-                Spacer(Modifier.height(10.dp))
+                Spacer(Modifier.height(if (d.t >= 1) 4.dp else 10.dp))
                 Figure(percent(b), d.fig)
             }
             Column(Modifier.weight(1f).padding(top = 3.dp, start = 26.dp)) {

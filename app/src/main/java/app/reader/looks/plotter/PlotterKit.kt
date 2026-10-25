@@ -77,6 +77,7 @@ import app.reader.looks.ChoiceOption
 import app.reader.looks.FormField
 import app.reader.looks.Kit
 import app.reader.looks.LookCard
+import app.reader.looks.common.CardRows
 import app.reader.looks.SheetAction
 import app.reader.theme.LocalColors
 import kotlin.math.roundToInt
@@ -371,17 +372,7 @@ object PlotterKit : Kit {
 
     @Composable
     override fun LookPicker(cards: List<LookCard>, current: String, onPick: (String) -> Unit) {
-        BoxWithConstraints(Modifier.fillMaxWidth().padding(top = 6.dp, bottom = 12.dp)) {
-            if (maxWidth >= 440.dp) {
-                Row(Modifier.padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    cards.forEach { LookCardView(it, it.id == current, Modifier.weight(1f)) { onPick(it.id) } }
-                }
-            } else {
-                Row(Modifier.horizontalScroll(rememberScrollState()).padding(horizontal = 4.dp), horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                    cards.forEach { LookCardView(it, it.id == current, Modifier.width(112.dp)) { onPick(it.id) } }
-                }
-            }
-        }
+        CardRows(cards, 14.dp, Modifier.padding(top = 6.dp, bottom = 12.dp).padding(horizontal = 4.dp)) { card, m -> LookCardView(card, card.id == current, m) { onPick(card.id) } }
     }
 
     @Composable

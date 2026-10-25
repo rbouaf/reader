@@ -108,14 +108,14 @@ fun MiniTrace(b: Book, width: Dp) {
 // ---------------- the record's channel: chapter gridlines, 4-week divisions, sittings, the now cursor and pen ----------------
 
 @Composable
-fun Channel(b: Book) {
+fun Channel(b: Book, rows: Float = 5f) {
     val g = grid(); val c = colors()
     val h = remember(b) { history(b) }
     val chapters = b.state.chapters ?: 0
     val wk = (h.week * 100).roundToInt()
     Column(Modifier.padding(top = g.lines(0.5f))) {
         Row {
-            Canvas(Modifier.weight(1f).height(g.lines(5))) {
+            Canvas(Modifier.weight(1f).height(g.lines(rows))) {
                 val H = size.height; val W = size.width
                 for (w in listOf(4, 8, 12)) vDots(xOf(w * 7f) * W, c.rule)
                 if (chapters > 1 && H / chapters >= 4.dp.toPx()) for (k in 1 until chapters) hDots((1f - k.toFloat() / chapters) * H, c.rule, period = 3f)
@@ -130,7 +130,7 @@ fun Channel(b: Book) {
                 square(W - 4.dp.toPx(), (1f - h.p) * H - 3.dp.toPx(), 7f, c.ink)
             }
             Spacer(Modifier.width(g.ch(1)))
-            BoxWithConstraints(Modifier.width(g.ch(5)).height(g.lines(5))) {
+            BoxWithConstraints(Modifier.width(g.ch(5)).height(g.lines(rows))) {
                 val y = (maxHeight * (1f - h.p)).coerceIn(g.lines(0.5f), maxHeight - g.lines(0.5f)) - g.lines(0.5f)
                 Text("${percent(b)}%", style = RT.title(g, c), maxLines = 1, softWrap = false, modifier = Modifier.offset(y = y))
             }
