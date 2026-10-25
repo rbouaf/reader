@@ -52,6 +52,7 @@ import app.reader.reader.epub.ReadingStyle
 import app.reader.reader.epub.ReadingStyles
 import app.reader.reader.pdf.PdfViewer
 import app.reader.theme.LocalColors
+import app.reader.theme.Hx
 import app.reader.theme.LocalHaptics
 import app.reader.theme.ReaderTheme
 import app.reader.theme.bookFontFor
@@ -179,7 +180,7 @@ private fun ReaderScreen(vm: ReaderViewModel, onClose: () -> Unit) {
                             back = onClose,
                             contents = { vm.openPanel(Panel.Contents) },
                             search = { vm.openPanel(Panel.Search) },
-                            readAloud = { vm.hideChrome(); vm.tts.toggle() },
+                            readAloud = { vm.hideChrome(); haptics(if (ui.tts == TtsState.Off) Hx.ToggleOn else Hx.ToggleOff); vm.tts.toggle() },
                             goBackToMark = vm::goBackToMark,
                             scrubStart = vm::scrubStart,
                             scrubTo = vm::scrubTo,
@@ -200,10 +201,11 @@ private fun ReaderScreen(vm: ReaderViewModel, onClose: () -> Unit) {
                         kit.TtsBar(
                             playing = ui.tts == TtsState.Playing,
                             label = ui.chapter ?: ui.title,
-                            onPlayPause = vm.tts::playPause,
-                            onPrevious = vm.tts::previous,
-                            onNext = vm.tts::next,
-                            onStop = vm.tts::stop,
+                            // the same calls come from the notification and lock screen, which stay silent
+                            onPlayPause = { haptics(if (ui.tts == TtsState.Playing) Hx.ToggleOff else Hx.ToggleOn); vm.tts.playPause() },
+                            onPrevious = { haptics(Hx.Select); vm.tts.previous() },
+                            onNext = { haptics(Hx.Select); vm.tts.next() },
+                            onStop = { haptics(Hx.ToggleOff); vm.tts.stop() },
                         )
                     }
                 }

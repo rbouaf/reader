@@ -502,7 +502,7 @@ object RadarKit : Kit {
     }
 
     @Composable
-    override fun Panel(title: String, onClose: () -> Unit, top: (@Composable () -> Unit)?, items: LazyListScope.() -> Unit) {
+    override fun Panel(title: String, onClose: () -> Unit, top: (@Composable () -> Unit)?, backLabel: String, items: LazyListScope.() -> Unit) {
         val c = colors()
         val insets = WindowInsets.safeDrawing.asPaddingValues()
         BoxWithConstraints(Modifier.fillMaxSize()) {
@@ -527,7 +527,7 @@ object RadarKit : Kit {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        BackBtn("Book", onClose)
+                        BackBtn(backLabel, onClose)
                         Text(disp(title), style = RS.display(c, 24.sp, 1.1f))
                     }
                     if (top != null) Box(Modifier.padding(horizontal = 16.dp).padding(top = 14.dp)) { top() }

@@ -1,6 +1,7 @@
 package app.reader.theme
 
 import android.os.SystemClock
+import android.os.VibrationAttributes
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.view.HapticFeedbackConstants as H
@@ -33,6 +34,14 @@ enum class Hx(val full: Boolean = false, val throttleMs: Long = 0) {
     ToggleOff,
     LongPress,
     Confirm,
+    /** Refused: a name already taken, a search with no results, a PDF with no text layer. */
+    Reject,
+    /** A gesture crossed the point where it takes effect (pinching a PDF page into its text view)… */
+    ThresholdOn,
+    /** …or went back out of it. */
+    ThresholdOff,
+    /** Compose's own text-selection handles. */
+    TextHandle(throttleMs = 18),
 }
 
 /**
@@ -91,6 +100,10 @@ class Haptics(
             Hx.ToggleOff -> constant(H.TOGGLE_OFF)
             Hx.LongPress -> constant(H.LONG_PRESS)
             Hx.Confirm -> constant(H.CONFIRM)
+            Hx.Reject -> constant(H.REJECT)
+            Hx.ThresholdOn -> constant(H.GESTURE_THRESHOLD_ACTIVATE)
+            Hx.ThresholdOff -> constant(H.GESTURE_THRESHOLD_DEACTIVATE)
+            Hx.TextHandle -> constant(H.TEXT_HANDLE_MOVE)
         }
     }
 
@@ -99,15 +112,34 @@ class Haptics(
     }
 
     private fun compose(vararg parts: Pair<Int, Float>): Unit? {
-        val v = vibrator ?: return null
         if (!primitives) return null
         val c = VibrationEffect.startComposition()
         parts.forEachIndexed { i, (p, scale) -> c.addPrimitive(p, scale, if (i == 0) 0 else 40) }
-        runCatching { v.vibrate(c.compose()) }
+        return effect(c.compose())
+    }
+
+    /** Marked as touch feedback, so the system's touch-vibration strength and off switch apply. */
+    private fun effect(e: VibrationEffect): Unit? {
+        val v = vibrator ?: return null
+        runCatching { v.vibrate(e, touch) }
         return Unit
     }
 
+    // ---------------- the haptics test page ----------------
+
+    /** Plays [e] whatever the haptics level, for the test page. */
+    fun preview(e: Hx) = play(e)
+
+    /** Plays a system constant directly; false if the view refused (touch feedback off in system settings). */
+    fun previewConstant(c: Int): Boolean = view?.performHapticFeedback(c) ?: false
+
+    /** Plays a raw effect as touch feedback; false without a vibrator. */
+    fun previewEffect(e: VibrationEffect): Boolean = effect(e) != null
+
+    val device: Vibrator? get() = vibrator
+
     companion object {
+        private val touch: VibrationAttributes = VibrationAttributes.createForUsage(VibrationAttributes.USAGE_TOUCH)
         val None = Haptics(null, null, { HapticLevel.Off }, { false })
     }
 }

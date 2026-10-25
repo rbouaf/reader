@@ -228,6 +228,7 @@ class PinchContainer(context: android.content.Context, private val vm: ReaderVie
 
     override fun onInterceptTouchEvent(ev: android.view.MotionEvent): Boolean {
         if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) lastDown.set(ev.x, ev.y)
+        if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN || ev.actionMasked == android.view.MotionEvent.ACTION_UP) vm.onUserInput()
         if (!enabled()) return false
         detector.onTouchEvent(ev)
         if (ev.actionMasked == android.view.MotionEvent.ACTION_DOWN) pinching = false

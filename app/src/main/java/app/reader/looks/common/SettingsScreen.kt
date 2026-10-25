@@ -1,5 +1,10 @@
 package app.reader.looks.common
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.getValue
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -63,6 +68,7 @@ fun SettingsScreen(
     val look = LocalLook.current
     val kit = look.kit
     val hx = LocalHaptics.current
+    var lab by remember { mutableStateOf(false) }
 
     fun <T> choose(cur: T, next: T, f: (AppSettings) -> AppSettings) {
         if (cur != next) { hx(Hx.Select); update(f) }
@@ -72,116 +78,123 @@ fun SettingsScreen(
         hx(if (on) Hx.ToggleOn else Hx.ToggleOff); update(f)
     }
 
-    kit.SettingsFrame(
-        title = "Settings",
-        backLabel = "Library",
-        onBack = onBack,
-        preview = { kit.PreviewFrame { BookPreview(settings) } },
-    ) {
-        kit.Group("Style", "Changes the look of the whole app. Your books, reading positions and settings stay as they are.") {
-            val cards = remember(settings.theme, settings.night, settings.warmth, systemDark) {
-                Looks.all.map { l ->
-                    LookCard(l.id, l.name, l.sub) { LookThumb(l, settings, systemDark) }
+    Box(Modifier.fillMaxSize()) {
+        kit.SettingsFrame(
+            title = "Settings",
+            backLabel = "Library",
+            onBack = onBack,
+            preview = { kit.PreviewFrame { BookPreview(settings) } },
+        ) {
+            kit.Group("Style", "Changes the look of the whole app. Your books, reading positions and settings stay as they are.") {
+                val cards = remember(settings.theme, settings.night, settings.warmth, systemDark) {
+                    Looks.all.map { l ->
+                        LookCard(l.id, l.name, l.sub) { LookThumb(l, settings, systemDark) }
+                    }
                 }
+                kit.LookPicker(cards, look.id) { id -> choose(look.id, id) { it.copy(look = id) } }
             }
-            kit.LookPicker(cards, look.id) { id -> choose(look.id, id) { it.copy(look = id) } }
-        }
 
-        kit.Group("Library", null) {
-            kit.Action("Books folder", folder ?: "None chosen yet", if (folder == null) "Choose" else "Change", onChooseFolder)
-        }
+            kit.Group("Library", null) {
+                kit.Action("Books folder", folder ?: "None chosen yet", if (folder == null) "Choose" else "Change", onChooseFolder)
+            }
 
-        kit.Group("Light and paper", null) {
-            val themes = listOf(ThemeChoice.System, ThemeChoice.Light, ThemeChoice.Dark, ThemeChoice.Black)
-            val shown = settings.theme ?: if (look.defaultMode.isDark) ThemeChoice.Dark else ThemeChoice.Light
-            kit.Choice(
-                "Theme",
-                listOf("System", "Light", "Dark", "Black").map { ChoiceOption(it) },
-                themes.indexOf(shown),
-                when (shown) {
-                    ThemeChoice.System -> "Follows the system's dark mode."
-                    ThemeChoice.Black -> "Pure black, for OLED screens."
-                    else -> null
-                },
-            ) { i -> choose(settings.theme, themes[i]) { it.copy(theme = themes[i]) } }
-            if (shown == ThemeChoice.System) {
-                val nights = NightChoice.entries
-                kit.Choice("At night", listOf("Dark", "Black").map { ChoiceOption(it) }, nights.indexOf(settings.night), null) { i ->
-                    choose(settings.night, nights[i]) { it.copy(night = nights[i]) }
+            kit.Group("Light and paper", null) {
+                val themes = listOf(ThemeChoice.System, ThemeChoice.Light, ThemeChoice.Dark, ThemeChoice.Black)
+                val shown = settings.theme ?: if (look.defaultMode.isDark) ThemeChoice.Dark else ThemeChoice.Light
+                kit.Choice(
+                    "Theme",
+                    listOf("System", "Light", "Dark", "Black").map { ChoiceOption(it) },
+                    themes.indexOf(shown),
+                    when (shown) {
+                        ThemeChoice.System -> "Follows the system's dark mode."
+                        ThemeChoice.Black -> "Pure black, for OLED screens."
+                        else -> null
+                    },
+                ) { i -> choose(settings.theme, themes[i]) { it.copy(theme = themes[i]) } }
+                if (shown == ThemeChoice.System) {
+                    val nights = NightChoice.entries
+                    kit.Choice("At night", listOf("Dark", "Black").map { ChoiceOption(it) }, nights.indexOf(settings.night), null) { i ->
+                        choose(settings.night, nights[i]) { it.copy(night = nights[i]) }
+                    }
                 }
+                DetentSlider(
+                    label = "Warmth",
+                    value = settings.warmth.toFloat(), min = 0f, max = 100f, step = 1f, detent = 10f, home = 0f,
+                    text = { if (it == 0f) "Neutral" else "${it.toInt()}%" },
+                    stepper = false,
+                ) { v -> update { it.copy(warmth = v.roundToInt()) } }
             }
-            DetentSlider(
-                label = "Warmth",
-                value = settings.warmth.toFloat(), min = 0f, max = 100f, step = 1f, detent = 10f, home = 0f,
-                text = { if (it == 0f) "Neutral" else "${it.toInt()}%" },
-                stepper = false,
-            ) { v -> update { it.copy(warmth = v.roundToInt()) } }
-        }
 
-        kit.Group("Text", "For EPUB, TXT and Markdown. PDFs keep their own layout.") {
-            val fonts = look.bookFonts
-            val font = bookFontFor(look, settings)
-            kit.Choice("Typeface", fonts.map { ChoiceOption(it, Fonts.book(it)) }, fonts.indexOf(font), null) { i ->
-                choose(font, fonts[i]) { it.copy(font = fonts[i]) }
+            kit.Group("Text", "For EPUB, TXT and Markdown. PDFs keep their own layout.") {
+                val fonts = look.bookFonts
+                val font = bookFontFor(look, settings)
+                kit.Choice("Typeface", fonts.map { ChoiceOption(it, Fonts.book(it)) }, fonts.indexOf(font), null) { i ->
+                    choose(font, fonts[i]) { it.copy(font = fonts[i]) }
+                }
+                DetentSlider(
+                    label = "Size", value = settings.size.toFloat(), min = MIN_SIZE.toFloat(), max = MAX_SIZE.toFloat(), step = 1f, detent = 1f, home = 18f,
+                    text = { "${it.toInt()} px" }, stepper = true,
+                ) { v -> update { it.copy(size = v.roundToInt()) } }
+                DetentSlider(
+                    label = "Line spacing", value = settings.leading, min = 1.3f, max = 2f, step = 0.05f, detent = 0.1f, home = 1.6f,
+                    text = { "%.2f".format(it) }, stepper = false,
+                ) { v -> update { it.copy(leading = v) } }
+                val margins = Margins.entries
+                kit.Choice("Margins", listOf("Narrow", "Normal", "Wide").map { ChoiceOption(it) }, margins.indexOf(settings.margins), null) { i ->
+                    choose(settings.margins, margins[i]) { it.copy(margins = margins[i]) }
+                }
+                kit.Toggle("Justify text", null, settings.justify) { on -> toggle(on) { it.copy(justify = on) } }
+                kit.Toggle("Hyphenate", null, settings.hyphens) { on -> toggle(on) { it.copy(hyphens = on) } }
             }
-            DetentSlider(
-                label = "Size", value = settings.size.toFloat(), min = MIN_SIZE.toFloat(), max = MAX_SIZE.toFloat(), step = 1f, detent = 1f, home = 18f,
-                text = { "${it.toInt()} px" }, stepper = true,
-            ) { v -> update { it.copy(size = v.roundToInt()) } }
-            DetentSlider(
-                label = "Line spacing", value = settings.leading, min = 1.3f, max = 2f, step = 0.05f, detent = 0.1f, home = 1.6f,
-                text = { "%.2f".format(it) }, stepper = false,
-            ) { v -> update { it.copy(leading = v) } }
-            val margins = Margins.entries
-            kit.Choice("Margins", listOf("Narrow", "Normal", "Wide").map { ChoiceOption(it) }, margins.indexOf(settings.margins), null) { i ->
-                choose(settings.margins, margins[i]) { it.copy(margins = margins[i]) }
-            }
-            kit.Toggle("Justify text", null, settings.justify) { on -> toggle(on) { it.copy(justify = on) } }
-            kit.Toggle("Hyphenate", null, settings.hyphens) { on -> toggle(on) { it.copy(hyphens = on) } }
-        }
 
-        kit.Group("Pages", null) {
-            val spreads = Spread.entries
-            kit.Choice("Layout", listOf("Auto", "One page", "Two pages").map { ChoiceOption(it) }, spreads.indexOf(settings.spread),
-                "Auto shows two pages when a tablet is held sideways.") { i ->
-                choose(settings.spread, spreads[i]) { it.copy(spread = spreads[i]) }
+            kit.Group("Pages", null) {
+                val spreads = Spread.entries
+                kit.Choice("Layout", listOf("Auto", "One page", "Two pages").map { ChoiceOption(it) }, spreads.indexOf(settings.spread),
+                    "Auto shows two pages when a tablet is held sideways.") { i ->
+                    choose(settings.spread, spreads[i]) { it.copy(spread = spreads[i]) }
+                }
+                val anims = PageAnim.entries
+                kit.Choice("Page turn", listOf("Instant", "Slide").map { ChoiceOption(it) }, anims.indexOf(settings.anim), null) { i ->
+                    choose(settings.anim, anims[i]) { it.copy(anim = anims[i]) }
+                }
+                val sides = TapSide.entries
+                kit.Choice("Tap this side to go forward", listOf("Right", "Left").map { ChoiceOption(it) }, sides.indexOf(settings.tapSide), null) { i ->
+                    choose(settings.tapSide, sides[i]) { it.copy(tapSide = sides[i]) }
+                }
+                kit.Toggle("Volume keys turn pages", null, settings.volumeKeys) { on -> toggle(on) { it.copy(volumeKeys = on) } }
+                kit.Toggle(
+                    "Text wrap zoom",
+                    "Pinch to make text bigger or smaller; it re-wraps to fit the screen. On a PDF, pinching in switches to a text view of the page.",
+                    settings.wrapZoom,
+                ) { on -> toggle(on) { it.copy(wrapZoom = on) } }
             }
-            val anims = PageAnim.entries
-            kit.Choice("Page turn", listOf("Instant", "Slide").map { ChoiceOption(it) }, anims.indexOf(settings.anim), null) { i ->
-                choose(settings.anim, anims[i]) { it.copy(anim = anims[i]) }
-            }
-            val sides = TapSide.entries
-            kit.Choice("Tap this side to go forward", listOf("Right", "Left").map { ChoiceOption(it) }, sides.indexOf(settings.tapSide), null) { i ->
-                choose(settings.tapSide, sides[i]) { it.copy(tapSide = sides[i]) }
-            }
-            kit.Toggle("Volume keys turn pages", null, settings.volumeKeys) { on -> toggle(on) { it.copy(volumeKeys = on) } }
-            kit.Toggle(
-                "Text wrap zoom",
-                "Pinch to make text bigger or smaller; it re-wraps to fit the screen. On a PDF, pinching in switches to a text view of the page.",
-                settings.wrapZoom,
-            ) { on -> toggle(on) { it.copy(wrapZoom = on) } }
-        }
 
-        kit.Group("PDF", null) {
-            kit.Toggle("Recolour pages", "Tints pages to match the theme and warmth. Photos turn monochrome.", settings.pdfRecolor) { on ->
-                toggle(on) { it.copy(pdfRecolor = on) }
+            kit.Group("PDF", null) {
+                kit.Toggle("Recolour pages", "Tints pages to match the theme and warmth. Photos turn monochrome.", settings.pdfRecolor) { on ->
+                    toggle(on) { it.copy(pdfRecolor = on) }
+                }
+                kit.Toggle("Trim white margins", "Zooms in so pages fill the screen.", settings.pdfTrim) { on -> toggle(on) { it.copy(pdfTrim = on) } }
             }
-            kit.Toggle("Trim white margins", "Zooms in so pages fill the screen.", settings.pdfTrim) { on -> toggle(on) { it.copy(pdfTrim = on) } }
-        }
 
-        kit.Group("Haptics", null) {
-            val levels = HapticLevel.entries
-            kit.Choice(
-                null, listOf("Off", "Quiet", "Full").map { ChoiceOption(it) }, levels.indexOf(settings.haptics),
-                when (settings.haptics) {
-                    HapticLevel.Off -> "No vibration."
-                    HapticLevel.Quiet -> "Feel chapter breaks, the scrubber, and the first and last page. Ordinary page turns stay silent."
-                    HapticLevel.Full -> "Everything in Quiet, plus a soft tick on each page turn and when a swipe is far enough to turn."
-                },
-            ) { i -> choose(settings.haptics, levels[i]) { it.copy(haptics = levels[i]) } }
-            if (settings.haptics == HapticLevel.Quiet) {
-                kit.Toggle("Tick on every page turn", null, settings.pageTick) { on -> toggle(on) { it.copy(pageTick = on) } }
+            kit.Group("Haptics", null) {
+                val levels = HapticLevel.entries
+                kit.Choice(
+                    null, listOf("Off", "Quiet", "Full").map { ChoiceOption(it) }, levels.indexOf(settings.haptics),
+                    when (settings.haptics) {
+                        HapticLevel.Off -> "No vibration."
+                        HapticLevel.Quiet -> "Feel chapter breaks, the scrubber, and the first and last page. Ordinary page turns stay silent."
+                        HapticLevel.Full -> "Everything in Quiet, plus a soft tick on each page turn and when you let go of the scrubber."
+                    },
+                ) { i -> choose(settings.haptics, levels[i]) { it.copy(haptics = levels[i]) } }
+                if (settings.haptics == HapticLevel.Quiet) {
+                    kit.Toggle("Tick on every page turn", null, settings.pageTick) { on -> toggle(on) { it.copy(pageTick = on) } }
+                }
+                kit.Action("Try every effect", "What this device can do", "Open") { lab = true }
             }
+        }
+        if (lab) {
+            BackHandler { lab = false }
+            HapticsLab(onClose = { lab = false })
         }
     }
 }

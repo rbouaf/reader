@@ -66,13 +66,12 @@ private fun Root() {
     var held by remember { mutableStateOf<Book?>(null) }
     var editing by remember { mutableStateOf<Book?>(null) }
 
-    val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
-        if (uri != null) app.library.setFolder(uri)
-    }
-
     ReaderTheme(look, settings) {
         AppChrome(settings) {
             val hx = LocalHaptics.current
+            val pickFolder = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocumentTree()) { uri: Uri? ->
+                if (uri != null) { hx(Hx.Confirm); app.library.setFolder(uri) }
+            }
             BackHandler(screen == Screen.Settings) { screen = Screen.Library }
             AnimatedContent(screen to look.id, transitionSpec = { fadeIn() togetherWith fadeOut() }, label = "screen") { (s, _) ->
                 val l = LocalLook.current
@@ -93,7 +92,7 @@ private fun Root() {
                             ui,
                             LibraryActions(
                                 open = { b -> context.startActivity(ReaderActivity.intent(context, b)) },
-                                hold = { b -> hx(Hx.LongPress); held = b },
+                                hold = { b -> held = b },
                                 sort = { so -> if (so != settings.sort) { hx(Hx.Select); app.settings.update { it.copy(sort = so) } } },
                                 settings = { screen = Screen.Settings },
                                 chooseFolder = { pickFolder.launch(lib.folder) },
@@ -160,7 +159,7 @@ private fun EditDetails(b: Book, onDone: () -> Unit) {
                     app.library.editDetails(b.key, t, a)
                 }
                 val err = if (name.trim() != base) app.library.rename(b.key, name) else null
-                if (err == null) { hx(Hx.Confirm); onDone() } else { hx(Hx.Edge); error = err }
+                if (err == null) { hx(Hx.Confirm); onDone() } else { hx(Hx.Reject); error = err }
             }
         },
         onDismiss = onDone,

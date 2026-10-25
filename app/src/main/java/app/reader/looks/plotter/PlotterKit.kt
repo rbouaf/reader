@@ -539,7 +539,7 @@ object PlotterKit : Kit {
     }
 
     @Composable
-    override fun Panel(title: String, onClose: () -> Unit, top: (@Composable () -> Unit)?, items: LazyListScope.() -> Unit) {
+    override fun Panel(title: String, onClose: () -> Unit, top: (@Composable () -> Unit)?, backLabel: String, items: LazyListScope.() -> Unit) {
         val c = colors()
         BoxWithConstraints(Modifier.fillMaxSize()) {
             val tablet = maxWidth >= 700.dp
@@ -563,7 +563,7 @@ object PlotterKit : Kit {
                             .padding(top = insets.calculateTopPadding()).height(68.dp).padding(horizontal = 16.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        PenButton("Book", onClose, back = true)
+                        PenButton(backLabel, onClose, back = true)
                         Spacer(Modifier.weight(1f))
                         Text(title, style = PT.serif(34.sp, c.ink, lh = 40.sp))
                     }

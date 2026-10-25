@@ -347,14 +347,16 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val before = _ui.value
         val tocIndex = before.toc.indexOfLast { e -> e.page != null && e.page <= page }.takeIf { it >= 0 }
         val moved = page != before.page
+        // only moves you made are felt: not the engine settling on open, not read aloud turning pages
+        val byYou = android.os.SystemClock.uptimeMillis() - lastInputAt < 1200
         _ui.update { it.copy(page = page, pageLast = pageLast, tocIndex = tocIndex) }
-        if (moved && !quietUntilNextChange && !before.scrubbing) {
+        if (moved && byYou && !quietUntilNextChange && !before.scrubbing) {
             val chapterChanged = before.chapterPages.count { it <= page } != before.chapterPages.count { it <= before.page }
             _hx.tryEmit(if (chapterChanged) Hx.Chapter else Hx.PageTurn)
         }
         if (moved) quietUntilNextChange = false
         val atEnd = pageLast >= before.pageCount && before.pageCount > 1
-        if (atEnd && !ended) { ended = true; viewModelScope.launch { delay(160); _hx.tryEmit(Hx.BookEnd) } }
+        if (atEnd && !ended) { ended = true; if (byYou) viewModelScope.launch { delay(160); _hx.tryEmit(Hx.BookEnd) } }
         touch()
         scheduleSave(locator)
     }
@@ -372,10 +374,18 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
 
     // ---------------- navigation ----------------
 
-    fun turn(forward: Boolean) { hideChrome(); _commands.tryEmit(Command.Turn(forward)) }
+    fun turn(forward: Boolean) { onUserInput(); hideChrome(); _commands.tryEmit(Command.Turn(forward)) }
+
+    private var lastInputAt = 0L
+
+    /** A finger on the page or a key: page moves in the next moment are yours, so they're felt. */
+    fun onUserInput() { lastInputAt = android.os.SystemClock.uptimeMillis() }
 
     /** The engine reports a turn past the first or last page. */
     fun onEdge() { _hx.tryEmit(Hx.Edge) }
+
+    /** Plays a haptic from outside the view model (search, read aloud, the PDF viewer). */
+    fun hx(e: Hx) { _hx.tryEmit(e) }
 
     fun jumpTo(page: Int) {
         markReturn()
@@ -433,7 +443,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
     /** [factor] is the pinch's total scale since it began. Sizes snap to whole pixels. */
     fun pinchBy(factor: Float) {
         // in a PDF's text view, pinching out goes back to the real page
-        if (_ui.value.textView && factor < 0.75f) { _ui.update { it.copy(zoomSize = null) }; exitTextView(); return }
+        if (_ui.value.textView && factor < 0.75f) { _ui.update { it.copy(zoomSize = null) }; _hx.tryEmit(Hx.ThresholdOff); exitTextView(); return }
         val target = (pinchStart * factor).roundToInt().coerceIn(MIN_SIZE, MAX_SIZE)
         val shown = _ui.value.zoomSize ?: pinchStart
         if (target == shown) {
@@ -479,6 +489,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
         val pdf = _doc.value as? Doc.Pdf ?: return
         if (entering) return
         entering = true
+        _hx.tryEmit(Hx.ThresholdOn)
         hideChrome()
         val page = _ui.value.page
         val book = key?.let { library.book(it) }
@@ -494,7 +505,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                         _ui.update { it.copy(notice = "Preparing text view… ${(p * 100).toInt()}%") }
                     }
                 }
-                if (file == null) { notice("This PDF is scanned images with no text layer, so it can't be re-wrapped.", 3500); return@launch }
+                if (file == null) { _hx.tryEmit(Hx.Reject); notice("This PDF is scanned images with no text layer, so it can't be re-wrapped.", 3500); return@launch }
                 val pub = withContext(Dispatchers.IO) { app.readium.retrieveFile(file) }
                 pdfDoc = pdf; pdfToc = _ui.value.toc; pdfChapters = _ui.value.chapterPages
                 scale = 1.0; measured = false; paging = null
@@ -505,6 +516,7 @@ class ReaderViewModel(application: Application) : AndroidViewModel(application) 
                 notice("Text view. Pinch out or press Back for the page.")
             } catch (e: Exception) {
                 Log.w(TAG, "text view failed", e)
+                _hx.tryEmit(Hx.Reject)
                 notice("Couldn't make a text view of this PDF.")
             } finally { entering = false }
         }

@@ -365,7 +365,7 @@ object TraceKit : Kit {
     }
 
     @Composable
-    override fun Panel(title: String, onClose: () -> Unit, top: (@Composable () -> Unit)?, items: LazyListScope.() -> Unit) {
+    override fun Panel(title: String, onClose: () -> Unit, top: (@Composable () -> Unit)?, backLabel: String, items: LazyListScope.() -> Unit) {
         Sized { tablet, _ ->
             val g = grid(); val c = colors()
             val insets = WindowInsets.safeDrawing.asPaddingValues()
@@ -383,7 +383,7 @@ object TraceKit : Kit {
                             .height(g.lines(3)).padding(horizontal = g.ch(2)),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        TextButton("Book", onClose, pre = "< ")
+                        TextButton(backLabel, onClose, pre = "< ")
                         Spacer(Modifier.weight(1f))
                         Text(title, style = RT.title(g, c))
                     }

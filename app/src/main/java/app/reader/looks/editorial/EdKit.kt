@@ -542,7 +542,7 @@ object EditorialKit : Kit {
     // ---------------- panels ----------------
 
     @Composable
-    override fun Panel(title: String, onClose: () -> Unit, top: (@Composable () -> Unit)?, items: LazyListScope.() -> Unit) {
+    override fun Panel(title: String, onClose: () -> Unit, top: (@Composable () -> Unit)?, backLabel: String, items: LazyListScope.() -> Unit) {
         Sized { tablet, _ ->
             val c = colors()
             val insets = WindowInsets.safeDrawing.asPaddingValues()
@@ -565,7 +565,7 @@ object EditorialKit : Kit {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {
-                        EdButton("Book", onClose, back = true)
+                        EdButton(backLabel, onClose, back = true)
                         Text(title, style = ET.disp(c, 30.sp, 1f), maxLines = 1)
                     }
                     if (top != null) Box(Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp)) { top() }

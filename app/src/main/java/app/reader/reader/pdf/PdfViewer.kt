@@ -52,6 +52,7 @@ import app.reader.reader.Doc
 import app.reader.reader.PdfHit
 import app.reader.reader.MENU_BAND_DP
 import app.reader.reader.ReaderViewModel
+import app.reader.theme.Hx
 import app.reader.theme.Colors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -121,7 +122,7 @@ fun PdfViewer(d: Doc.Pdf, vm: ReaderViewModel, settings: AppSettings, colors: Co
                     }
                 }
                 .pointerInput(Unit) {
-                    zoomGestures({ zoom }, { z, p -> zoom = z; pan = p }, { pan }) {
+                    zoomGestures({ zoom }, { z, p -> zoom = z; pan = p }, { pan }, vm::hx, vm::onUserInput) {
                         // text wrap zoom: pinching in from the whole page opens the re-wrapped text instead
                         if (s.wrapZoom) { vm.enterTextView(); true } else false
                     }
@@ -193,12 +194,15 @@ private fun PdfPage(
     }
 }
 
+private const val MAX_ZOOM = 5f
+
 /** Pinch to zoom (1–5×) and pan while zoomed; single-finger drags pass through to the pager at 1×. */
 private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.zoomGestures(
-    zoom: () -> Float, set: (Float, Offset) -> Unit, pan: () -> Offset, onPinchIn: () -> Boolean,
+    zoom: () -> Float, set: (Float, Offset) -> Unit, pan: () -> Offset, hx: (Hx) -> Unit, touched: () -> Unit, onPinchIn: () -> Boolean,
 ) {
     awaitEachGesture {
         awaitFirstDown(requireUnconsumed = false)
+        touched()
         var pinch = 1f
         var handedOff = false
         do {
@@ -211,7 +215,10 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.zoomGest
                 if (pinch > 1.15f && onPinchIn()) { handedOff = true; ev.changes.forEach { it.consume() }; continue }
             }
             if (fingers >= 2 || z > 1.01f) {
-                val nz = (z * ev.calculateZoom()).coerceIn(1f, 5f)
+                val nz = (z * ev.calculateZoom()).coerceIn(1f, MAX_ZOOM)
+                // the closest zoom is a wall; settling back on the whole page is home
+                if (nz >= MAX_ZOOM && z < MAX_ZOOM) hx(Hx.Edge)
+                if (nz <= 1.01f && z > 1.01f) hx(Hx.DetentHome)
                 val maxX = size.width * (nz - 1) / 2
                 val maxY = size.height * (nz - 1) / 2
                 val p = pan() + ev.calculatePan()
@@ -219,6 +226,7 @@ private suspend fun androidx.compose.ui.input.pointer.PointerInputScope.zoomGest
                 if (fingers >= 2 || nz > 1.01f) ev.changes.forEach { if (it.positionChanged()) it.consume() }
             }
         } while (ev.changes.any { it.pressed })
+        touched()
     }
 }
 

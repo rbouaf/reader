@@ -55,7 +55,7 @@ data class Counts(
 
 class LibraryActions(
     val open: (Book) -> Unit = {},
-    /** Long-press: the caller shows the book sheet and plays the haptic. */
+    /** Long-press: the caller shows the book sheet. Use `combinedClickable`, whose long-press haptic the app routes through its own. */
     val hold: (Book) -> Unit = {},
     val sort: (Sort) -> Unit = {},
     val settings: () -> Unit = {},

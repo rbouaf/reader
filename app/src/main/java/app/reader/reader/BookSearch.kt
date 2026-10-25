@@ -1,5 +1,6 @@
 package app.reader.reader
 
+import app.reader.theme.Hx
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,7 +32,10 @@ class BookSearch(private val vm: ReaderViewModel, private val scope: CoroutineSc
         vm.setSearch(SearchUi(query = vm.ui.value.search.query, running = true))
         job = scope.launch {
             val hits = mutableListOf<SearchHit>()
-            fun publish(done: Boolean) = vm.setSearch(SearchUi(vm.ui.value.search.query, running = !done, done = done, hits = hits.toList()))
+            fun publish(done: Boolean) {
+                vm.setSearch(SearchUi(vm.ui.value.search.query, running = !done, done = done, hits = hits.toList()))
+                if (done && hits.isEmpty()) vm.hx(Hx.Reject)
+            }
             when (val d = vm.doc.value) {
                 is Doc.Reflow -> {
                     val it = d.publication.search(q)

@@ -76,8 +76,9 @@ interface Kit {
     /**
      * A panel over the book for Contents and Search: full screen on phones, a side panel
      * on tablets. [top] sits under the title (the search field); [items] is a lazy list.
+     * [backLabel] names where closing returns to.
      */
-    @Composable fun Panel(title: String, onClose: () -> Unit, top: (@Composable () -> Unit)?, items: LazyListScope.() -> Unit)
+    @Composable fun Panel(title: String, onClose: () -> Unit, top: (@Composable () -> Unit)?, backLabel: String = "Book", items: LazyListScope.() -> Unit)
 
     /** A row inside a [Panel]: a contents entry (indented by [depth]) or a search hit. */
     @Composable fun PanelRow(primary: String, secondary: String?, trailing: String?, current: Boolean, depth: Int, onClick: () -> Unit)
