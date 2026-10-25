@@ -99,7 +99,7 @@ data class Dims(val tablet: Boolean, val twoColumn: Boolean, val t: Int = 0) {
     val goH = if (twoColumn) 50.dp else 54.dp
     val fig = when { t >= 5 -> 42.sp; twoColumn -> 54.sp; tablet -> 60.sp; else -> 50.sp }
     val chartH = when { t >= 5 -> 40.dp; t >= 2 -> 52.dp; t >= 1 -> 64.dp; twoColumn -> 78.dp; portraitTablet -> 120.dp; else -> 96.dp }
-    val sortInline get() = t >= 1
+    val sortInline get() = t >= 1 && twoColumn
     val clipPath get() = t >= 3
     val clipTitle get() = t >= 4
     val colF = when { twoColumn -> 40.dp; tablet -> 44.dp; else -> 38.dp }
@@ -142,16 +142,23 @@ fun EditorialLibrary(ui: LibraryUi, on: LibraryActions) {
             }
         } else {
             val inset = if (d.tablet) maxOf(d.gut, (maxWidth - 800.dp) / 2 + d.gut) else d.gut
+            val top = insets.calculateTopPadding() + if (d.tablet) 34.dp else 14.dp
+            val screen = maxHeight - top
             LazyColumn(
                 Modifier.fillMaxSize(),
                 contentPadding = PaddingValues(
-                    start = inset, end = inset,
-                    top = insets.calculateTopPadding() + if (d.tablet) 34.dp else 14.dp,
+                    start = inset, end = inset, top = top,
                     bottom = insets.calculateBottomPadding() + if (d.tablet) 64.dp else 56.dp,
                 ),
             ) {
-                item { Head(ui, on, d) }
-                item { Record(ui, on, d) }
+                // the record is always whole on the first screen; the index may start below it, cut
+                item {
+                    FirstScreen(
+                        screen = screen, bottomInset = insets.calculateBottomPadding(), breathing = 12.dp, levels = 6,
+                        first = { t -> val dt = d.copy(t = t); Head(ui, on, dt); Record(ui, on, dt) },
+                        rest = {},
+                    )
+                }
                 index(ui, on, d)
             }
         }

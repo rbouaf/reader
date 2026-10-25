@@ -78,6 +78,7 @@ import app.reader.data.Sort
 import app.reader.data.formatSize
 import app.reader.looks.LibraryActions
 import app.reader.looks.LibraryUi
+import app.reader.looks.common.FirstScreen
 import app.reader.looks.openedLabel
 import app.reader.looks.percent
 import app.reader.theme.LocalColors
@@ -97,7 +98,7 @@ fun PlotterLibrary(ui: LibraryUi, on: LibraryActions) {
     BoxWithConstraints(Modifier.fillMaxSize().mmGrid(c)) {
         val shape = PShape(tablet = maxWidth >= 700.dp, wide = maxWidth >= 1000.dp && maxWidth > maxHeight)
         CompositionLocalProvider(LocalShape provides shape) {
-            if (shape.wide) WideSheet(ui, on) else TallSheet(ui, on)
+            if (shape.wide) WideSheet(ui, on) else TallSheet(ui, on, maxHeight)
         }
     }
 }
@@ -106,7 +107,7 @@ fun PlotterLibrary(ui: LibraryUi, on: LibraryActions) {
 
 /** Phone and tablet portrait: one scrolling drawing; the frame's top and bottom scroll with it. */
 @Composable
-private fun TallSheet(ui: LibraryUi, on: LibraryActions) {
+private fun TallSheet(ui: LibraryUi, on: LibraryActions, viewH: Dp) {
     val c = colors(); val shape = LocalShape.current
     val insets = WindowInsets.safeDrawing.asPaddingValues()
     val ld = LocalLayoutDirection.current
@@ -148,8 +149,18 @@ private fun TallSheet(ui: LibraryUi, on: LibraryActions) {
             contentPadding = PaddingValues(top = insets.calculateTopPadding(), bottom = insets.calculateBottomPadding()),
         ) {
             item(key = "zt") { Spacer(Modifier.height(top)) }
-            item(key = "head") { Box(Modifier.slice(first = true)) { TitleBlock(ui, on) } }
-            item(key = "now") { Box(Modifier.slice()) { Now(ui, on) } }
+            // the title block and the whole record on the first screen; the index may start below, cut
+            item(key = "first") {
+                FirstScreen(
+                    screen = viewH - insets.calculateTopPadding() - top, bottomInset = insets.calculateBottomPadding(),
+                    breathing = 12.dp, levels = 6,
+                    first = { t ->
+                        Box(Modifier.slice(first = true)) { TitleBlock(ui, on) }
+                        Box(Modifier.slice()) { Now(ui, on, t = t) }
+                    },
+                    rest = {},
+                )
+            }
             index(ui, on) { content -> Box(Modifier.slice()) { content() } }
             item(key = "foot") { Box(Modifier.slice(last = true).height(with(density) { extra.toDp() })) }
             item(key = "zb") { Spacer(Modifier.height(bottom)) }
@@ -320,9 +331,12 @@ private fun Cell(label: String, value: String, modifier: Modifier, padEnd: Dp = 
 private fun chapterName(s: String) = s.replace(Regex("^[IVXLC]+\\.\\s*|^Chapter \\d+\\.?\\s*", RegexOption.IGNORE_CASE), "")
 
 @Composable
-private fun Now(ui: LibraryUi, on: LibraryActions, modifier: Modifier = Modifier) {
+private fun Now(ui: LibraryUi, on: LibraryActions, modifier: Modifier = Modifier, t: Int = 0) {
     val c = colors(); val shape = LocalShape.current
-    val mt = if (shape.wide) 28.dp else 34.dp
+    // [t] tightens the phone and portrait record until it fits the first screen (see FirstScreen):
+    // 1 closes the gap above it, 2 shrinks the protractor, 3 puts the path and chapter on one
+    // line each, 4 caps the title at two lines, 5 sets the title and protractor smaller
+    val mt = when { shape.wide -> 28.dp; t >= 1 -> 16.dp; else -> 34.dp }
     when {
         ui.folder == null -> Detail(
             "A", "No folder", "record 000", mt, modifier, onClick = on.chooseFolder, go = "Choose a folder", goRight = null,
@@ -340,12 +354,12 @@ private fun Now(ui: LibraryUi, on: LibraryActions, modifier: Modifier = Modifier
         ui.isEmpty -> Detail(
             "A", "Empty folder", "record 000", mt, modifier, onClick = on.chooseFolder, go = "Choose another folder", goRight = null,
         ) { StateBody("Nothing to read here.", "No EPUB, PDF, TXT or MD files in ${ui.folder}.", "0 files") }
-        ui.current != null -> Current(ui.current, on, mt, modifier)
+        ui.current != null -> Current(ui.current, on, mt, modifier, t)
     }
 }
 
 @Composable
-private fun Current(b: Book, on: LibraryActions, mt: Dp, modifier: Modifier) {
+private fun Current(b: Book, on: LibraryActions, mt: Dp, modifier: Modifier, t: Int = 0) {
     val c = colors(); val shape = LocalShape.current
     val st = b.state
     val goRight = st.page?.let { p -> st.pages?.let { "page $p of $it" } ?: "page $p" }
@@ -354,7 +368,7 @@ private fun Current(b: Book, on: LibraryActions, mt: Dp, modifier: Modifier) {
         st.chapters != null -> "${st.chapters} chapters"
         else -> "${formatSize(b.size)} ${b.format.label}"
     }
-    val titleSize = when { shape.wide -> 36.sp; shape.tablet -> 54.sp; else -> 40.sp }
+    val titleSize = when { shape.wide -> 36.sp; t >= 5 -> 32.sp; shape.tablet -> 54.sp; else -> 40.sp }
     Detail(
         "A", "Now reading", "record 001", mt, modifier, onClick = { on.open(b) }, onLongClick = { on.hold(b) },
         go = "Continue reading", goRight = goRight,
@@ -362,6 +376,7 @@ private fun Current(b: Book, on: LibraryActions, mt: Dp, modifier: Modifier) {
         Text(
             b.title, style = PT.serif(titleSize, c.ink, italic = true, lh = titleSize * 1.02f).copy(lineBreak = LineBreak.Heading),
             modifier = Modifier.cssLines(titleSize, 1.02f),
+            maxLines = if (t >= 4) 2 else Int.MAX_VALUE, overflow = TextOverflow.Ellipsis,
         )
         Text(
             b.author ?: "unknown author", style = PT.mono(if (shape.tabPortrait) 13.5.sp else 12.5.sp, c.mute),
@@ -372,7 +387,7 @@ private fun Current(b: Book, on: LibraryActions, mt: Dp, modifier: Modifier) {
             shape.tabPortrait -> Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Box(Modifier.weight(1.1f).padding(top = 8.dp)) { gauge(Modifier) }
                 Spacer(Modifier.width(26.dp))
-                Box(Modifier.weight(1f).padding(top = 26.dp)) { Fields(b, threeColumns = false) }
+                Box(Modifier.weight(1f).padding(top = 26.dp)) { Fields(b, threeColumns = false, oneLine = t >= 3) }
             }
             shape.wide -> {
                 // 300dp wide as in the mockup, smaller when the screen is short (system bars on a real tablet)
@@ -383,8 +398,9 @@ private fun Current(b: Book, on: LibraryActions, mt: Dp, modifier: Modifier) {
                 Box(Modifier.padding(top = 8.dp)) { Fields(b, threeColumns = true) }
             }
             else -> {
-                gauge(Modifier.padding(top = 4.dp))
-                Box(Modifier.padding(top = 10.dp)) { Fields(b, threeColumns = false) }
+                val frac = when { t >= 5 -> 0.5f; t >= 2 -> 0.72f; else -> 1f }
+                Box(Modifier.fillMaxWidth().padding(top = 4.dp), contentAlignment = Alignment.Center) { gauge(Modifier.fillMaxWidth(frac)) }
+                Box(Modifier.padding(top = 10.dp)) { Fields(b, threeColumns = false, oneLine = t >= 3) }
             }
         }
     }
@@ -392,7 +408,7 @@ private fun Current(b: Book, on: LibraryActions, mt: Dp, modifier: Modifier) {
 
 /** The labelled fields as a ruled cell grid. */
 @Composable
-private fun Fields(b: Book, threeColumns: Boolean) {
+private fun Fields(b: Book, threeColumns: Boolean, oneLine: Boolean = false) {
     val c = colors()
     val st = b.state
     val chapter = if (st.chapterIndex != null && st.chapters != null && st.chapter != null) "${st.chapterIndex} of ${st.chapters}, ${chapterName(st.chapter)}"
@@ -401,7 +417,7 @@ private fun Fields(b: Book, threeColumns: Boolean) {
     val size = "${formatSize(b.size)} ${b.format.label}"
     val opened = openedLabel(st.openedAt) ?: "never"
     @Composable fun RowScope.f(k: String, v: String, w: Float) =
-        FieldCell(k, v, Modifier.weight(w).fillMaxHeight().edges(c.ink, end = HL, bottom = HL))
+        FieldCell(k, v, Modifier.weight(w).fillMaxHeight().edges(c.ink, end = HL, bottom = HL), oneLine)
     Column(Modifier.fillMaxWidth().edges(c.ink, start = HL, top = HL)) {
         if (threeColumns) {
             Row(Modifier.height(IntrinsicSize.Min)) { f("file", file, 2f); f("size", size, 1f) }
@@ -415,12 +431,15 @@ private fun Fields(b: Book, threeColumns: Boolean) {
 }
 
 @Composable
-private fun FieldCell(k: String, v: String, modifier: Modifier) {
+private fun FieldCell(k: String, v: String, modifier: Modifier, oneLine: Boolean = false) {
     val c = colors()
     Column(modifier.padding(start = 9.dp, end = 9.dp, top = 7.dp, bottom = 8.dp)) {
         Text(k, style = PT.label(c), modifier = Modifier.cssLines(10.5.sp, 1f))
         Spacer(Modifier.height(4.dp))
-        Text(v, style = PT.mono(12.5.sp, c.ink, lh = 16.25.sp))
+        Text(
+            v, style = PT.mono(12.5.sp, c.ink, lh = 16.25.sp),
+            maxLines = if (oneLine) 1 else Int.MAX_VALUE, overflow = TextOverflow.MiddleEllipsis,
+        )
     }
 }
 

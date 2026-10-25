@@ -35,7 +35,8 @@ val LocalStretch = compositionLocalOf { 0.dp }
  *   stopping [breathing] short of the bottom.
  *
  * [screen] is the height from the column's top to the bottom of the screen, [bottomInset] the
- * part of it under the navigation bar.
+ * part of it under the navigation bar. With an empty [rest] (phones, where the index follows in
+ * the same list and may be cut), only the first rule applies.
  */
 @Composable
 fun FirstScreen(
@@ -57,7 +58,7 @@ fun FirstScreen(
         while (p.height > budget && level < levels - 1) { level++; p = measureFirst(level, 0, level) }
         val r = subcompose("rest") { Column { rest() } }.single().measure(loose)
 
-        if (p.height + r.height <= usable) {
+        if (r.height == 0 || p.height + r.height <= usable) {
             layout(cs.maxWidth, p.height + r.height) { p.place(0, 0); r.place(0, p.height) }
         } else {
             val extra = budget - p.height

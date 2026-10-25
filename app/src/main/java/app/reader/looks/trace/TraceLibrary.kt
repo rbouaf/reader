@@ -93,16 +93,23 @@ fun TraceLibrary(ui: LibraryUi, on: LibraryActions, appName: String = "trace") {
             } else {
                 // tablet portrait: a 96ch column, centred
                 val inset = if (shape.tablet) maxOf(side, (maxWidth - g.ch(96)) / 2) else side
+                val top = insets.calculateTopPadding() + if (shape.tablet) g.lines(2) else g.lines(1)
+                val screen = maxHeight - top
                 LazyColumn(
                     Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
-                        start = inset, end = inset,
-                        top = insets.calculateTopPadding() + if (shape.tablet) g.lines(2) else g.lines(1),
+                        start = inset, end = inset, top = top,
                         bottom = insets.calculateBottomPadding() + g.lines(3),
                     ),
                 ) {
-                    item { Head(ui, on, appName) }
-                    item { Record(ui, on) }
+                    // the record is always whole on the first screen; the index may start below it, cut
+                    item {
+                        FirstScreen(
+                            screen = screen, bottomInset = insets.calculateBottomPadding(), breathing = g.lines(0.5f), levels = 6,
+                            first = { t -> Head(ui, on, appName, t, wide = false); Record(ui, on, t) },
+                            rest = {},
+                        )
+                    }
                     index(ui, on, shape)
                 }
             }
@@ -112,7 +119,7 @@ fun TraceLibrary(ui: LibraryUi, on: LibraryActions, appName: String = "trace") {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Head(ui: LibraryUi, on: LibraryActions, appName: String, t: Int = 0) {
+private fun Head(ui: LibraryUi, on: LibraryActions, appName: String, t: Int = 0, wide: Boolean = true) {
     val g = grid(); val c = colors()
     Row(Modifier.fillMaxWidth().height(44.dp).offset(y = (-12).dp), verticalAlignment = Alignment.CenterVertically) {
         Text("reader / $appName", style = RT.label(g, c), modifier = Modifier.weight(1f))
@@ -120,7 +127,7 @@ private fun Head(ui: LibraryUi, on: LibraryActions, appName: String, t: Int = 0)
     }
     // tighter levels: the sort choice moves up beside the title, and the gaps close
     val sortable = ui.loaded && !ui.isEmpty && (ui.error == null || ui.current != null)
-    val sortInline = t >= 1 && ui.folder != null && sortable
+    val sortInline = t >= 1 && wide && ui.folder != null && sortable
     if (sortInline) {
         Row(Modifier.fillMaxWidth().padding(top = g.lines(0.5f) - 12.dp)) {
             Text("Library", style = RT.double(g, c), modifier = Modifier.weight(1f).alignByBaseline())
