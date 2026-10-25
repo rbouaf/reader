@@ -9,6 +9,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import app.reader.looks.LocalLook
+import app.reader.theme.Haptics
 import app.reader.theme.Hx
 import app.reader.theme.LocalHaptics
 import kotlinx.coroutines.delay
@@ -32,8 +33,11 @@ fun HapticsLab(onClose: () -> Unit) {
     val durations = remember(v) { v?.getPrimitiveDurations(*primitives) ?: IntArray(primitives.size) }
     val envelopes = remember(v) { v?.areEnvelopeEffectsSupported() == true }
     val allPrimitives = supported.all { it }
+    val buzzOnly = hx.buzzOnly
     val report = remember(v) {
         if (v == null || !v.hasVibrator()) "This device has no vibration motor."
+        else if (buzzOnly) "This motor only plays plain buzzes at one strength: Android drops its tuned effects and primitives here. " +
+            "The app plays buzzes of different lengths and rhythms instead, and skips the scrubber's per-page ticks."
         else buildList {
             val n = supported.count { it }
             add(when (n) { supported.size -> "Plays all $n primitives"; 0 -> "Plays no primitives, so the app uses system effects"; else -> "Plays $n of ${supported.size} primitives" } + ".")
@@ -55,6 +59,13 @@ fun HapticsLab(onClose: () -> Unit) {
             item { kit.PanelRow(name, where, "play", false, 0) { hx.preview(e) } }
         }
 
+        if (buzzOnly) {
+            item { kit.PanelMessage("Buzz lengths, to compare") }
+            BUZZES.forEach { (ms, use) ->
+                item { kit.PanelRow("$ms ms", use, "play", false, 0) { hx.previewEffect(Haptics.pulse(ms)) } }
+            }
+        }
+
         item { kit.PanelMessage("Ideas, not in use yet") }
         item {
             kit.PanelRow("Scrubber pull", "Ticks grow as the scrubber nears the page you came from, then the thud.", "play", false, 0) {
@@ -64,8 +75,11 @@ fun HapticsLab(onClose: () -> Unit) {
                         addPrimitive(C.PRIMITIVE_THUD, 0.8f, 60)
                     }.compose()
                 }) {
-                    repeat(4) { hx.previewConstant(H.SEGMENT_FREQUENT_TICK); delay(70) }
-                    hx.previewConstant(H.LONG_PRESS)
+                    if (buzzOnly) hx.previewEffect(Haptics.pulse(20, 70, 20, 70, 25, 70, 30, 60, 50))
+                    else {
+                        repeat(4) { hx.previewConstant(H.SEGMENT_FREQUENT_TICK); delay(70) }
+                        hx.previewConstant(H.LONG_PRESS)
+                    }
                 }
             }
         }
@@ -75,12 +89,12 @@ fun HapticsLab(onClose: () -> Unit) {
                 if (envelopes) "play" else "–", false, 0,
             ) { if (envelopes) hx.previewEffect(swell()) }
         }
-        item { kit.PanelRow("Swipe far enough", "Full level: a PDF swipe passing the point where it turns the page.", "play", false, 0) { hx.previewConstant(H.GESTURE_THRESHOLD_ACTIVATE) } }
-        item { kit.PanelRow("Swipe backed out", "Full level: letting the swipe fall back.", "play", false, 0) { hx.previewConstant(H.GESTURE_THRESHOLD_DEACTIVATE) } }
+        item { kit.PanelRow("Swipe far enough", "Full level: a PDF swipe passing the point where it turns the page.", "play", false, 0) { hx.preview(Hx.SwipeCommit) } }
+        item { kit.PanelRow("Swipe backed out", "Full level: letting the swipe fall back.", "play", false, 0) { hx.preview(Hx.SwipeCancel) } }
 
         item { kit.PanelMessage("System effects, tuned by the maker for this motor") }
         CONSTANTS.forEach { (name, c, use) ->
-            item { kit.PanelRow(name, use, "play", false, 0) { hx.previewConstant(c) } }
+            item { kit.PanelRow(name, if (buzzOnly) "$use Not supported here." else use, if (buzzOnly) "–" else "play", false, 0) { if (!buzzOnly) hx.previewConstant(c) } }
         }
 
         item { kit.PanelMessage("Primitives") }
@@ -95,7 +109,7 @@ fun HapticsLab(onClose: () -> Unit) {
 
         item { kit.PanelMessage("Ready-made effects") }
         PREDEFINED.forEach { (name, e) ->
-            item { kit.PanelRow(name, null, "play", false, 0) { hx.previewEffect(VibrationEffect.createPredefined(e)) } }
+            item { kit.PanelRow(name, if (buzzOnly) "Not supported here." else null, if (buzzOnly) "–" else "play", false, 0) { if (!buzzOnly) hx.previewEffect(VibrationEffect.createPredefined(e)) } }
         }
 
         if (envelopes) {
@@ -180,4 +194,12 @@ private val PREDEFINED = listOf(
     "EFFECT_TICK" to VibrationEffect.EFFECT_TICK,
     "EFFECT_DOUBLE_CLICK" to VibrationEffect.EFFECT_DOUBLE_CLICK,
     "EFFECT_HEAVY_CLICK" to VibrationEffect.EFFECT_HEAVY_CLICK,
+)
+
+private val BUZZES = listOf(
+    10L to "Shorter than the app uses.",
+    20L to "The app's lightest: page turns, steps, choosing an option, switching off.",
+    30L to "Chapters, grabbing the scrubber, switching on.",
+    50L to "Edges, the return mark, holding a book.",
+    80L to "Longer than the app uses.",
 )
