@@ -50,7 +50,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.SubcomposeLayout
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
@@ -70,6 +72,8 @@ import app.reader.data.formatSize
 import app.reader.data.sortedBy
 import app.reader.looks.LibraryActions
 import app.reader.looks.LibraryUi
+import app.reader.looks.common.FirstScreen
+import app.reader.looks.common.LocalStretch
 import app.reader.looks.openedLabel
 import app.reader.looks.percent
 import app.reader.theme.LocalColors
@@ -97,13 +101,19 @@ fun RadarLibrary(ui: LibraryUi, on: LibraryActions) {
         CompositionLocalProvider(LocalShape provides shape) {
             if (shape.twoColumn) {
                 Row(Modifier.fillMaxSize().padding(horizontal = 40.dp), horizontalArrangement = Arrangement.spacedBy(48.dp)) {
-                    Column(
-                        Modifier.width(470.dp).fillMaxHeight().verticalScroll(rememberScrollState())
-                            .padding(top = insets.calculateTopPadding() + 16.dp, bottom = insets.calculateBottomPadding() + 64.dp),
-                    ) {
-                        Head(ui, on)
-                        Record(ui, on, orders)
-                        if (ui.loaded && ui.all.isNotEmpty()) Summary(ui, on, orders)
+                    BoxWithConstraints(Modifier.width(470.dp).fillMaxHeight()) {
+                        val top = insets.calculateTopPadding() + 16.dp
+                        val screen = maxHeight - top
+                        Column(
+                            Modifier.fillMaxSize().verticalScroll(rememberScrollState())
+                                .padding(top = top, bottom = insets.calculateBottomPadding() + 64.dp),
+                        ) {
+                            FirstScreen(
+                                screen = screen, bottomInset = insets.calculateBottomPadding(), breathing = 20.dp, levels = 1,
+                                first = { Head(ui, on); Record(ui, on, orders) },
+                                rest = { if (ui.loaded && ui.all.isNotEmpty()) Summary(ui, on, orders) },
+                            )
+                        }
                     }
                     LazyColumn(
                         Modifier.weight(1f).fillMaxHeight(),
@@ -215,17 +225,17 @@ private fun Record(ui: LibraryUi, on: LibraryActions, orders: Map<String, String
     val c = colors(); val shape = LocalShape.current
     val body = RS.mono(c, 12.5.sp, 300, c.mute, lh = 19.sp, ls = (-0.01).em)
     when {
-        ui.folder == null -> RecordBox("record 00", "no contact", on.chooseFolder, null, "Choose a folder", null) {
+        ui.folder == null -> RecordBox("record 00", "no contact", on.chooseFolder, null, "Choose a folder", null, stretch = 0.dp) {
             RecTitle("No library yet")
             RecBody(
                 {},
                 fields = {
                     Quiet("Choose the folder on this device that holds your books. Everything in it and its subfolders (EPUB, PDF, TXT, Markdown) is listed here. Reading positions are saved inside that folder, so they sync with it.")
                 },
-                dial = { RecordDial(null, "--", emptyList(), shape.dial) },
+                dial = { RecordDial(null, "--", emptyList(), it) },
             )
         }
-        !ui.loaded && ui.current == null -> RecordBox("record 00", "scanning", null, null, null, null) {
+        !ui.loaded && ui.current == null -> RecordBox("record 00", "scanning", null, null, null, null, stretch = 0.dp) {
             RecTitle("Scanning")
             // the only motion in the look: a slow sweep while the first scan runs
             val t = rememberInfiniteTransition(label = "scan")
@@ -233,19 +243,19 @@ private fun Record(ui: LibraryUi, on: LibraryActions, orders: Map<String, String
             RecBody(
                 {},
                 fields = { Quiet("Looking for EPUB, PDF, TXT and Markdown files in ${ui.folder}.") },
-                dial = { RecordDial(null, "··", emptyList(), shape.dial, scan = 128f + a) },
+                dial = { RecordDial(null, "··", emptyList(), it, scan = 128f + a) },
             )
         }
         ui.error != null && ui.all.isEmpty() -> RecordBox("record 00", "signal lost", on.chooseFolder, null, "Choose another folder", null) {
             RecTitle("Can’t read the folder")
             Quiet(ui.error, Modifier.padding(top = 7.dp))
         }
-        ui.isEmpty -> RecordBox("record 00", "no contacts", on.chooseFolder, null, "Choose another folder", null) {
+        ui.isEmpty -> RecordBox("record 00", "no contacts", on.chooseFolder, null, "Choose another folder", null, stretch = 0.dp) {
             RecTitle("Nothing to read here")
             RecBody(
                 {},
                 fields = { Quiet("No EPUB, PDF, TXT or MD files in ${ui.folder}. Add some, or choose another folder.") },
-                dial = { RecordDial(null, "--", emptyList(), shape.dial) },
+                dial = { RecordDial(null, "--", emptyList(), it) },
             )
         }
         ui.current != null -> {
@@ -255,6 +265,7 @@ private fun Record(ui: LibraryUi, on: LibraryActions, orders: Map<String, String
             RecordBox(
                 "record ${orders[b.key] ?: "01"}", "now reading", { on.open(b) }, { on.hold(b) },
                 "Continue reading", st.page?.let { p -> st.pages?.let { "page $p of $it" } ?: "page $p" },
+                stretch = 0.dp, // the dial takes it
             ) {
                 RecTitle(b.title)
                 Text(b.author ?: "unknown", style = body, modifier = Modifier.padding(top = 7.dp))
@@ -280,7 +291,7 @@ private fun Record(ui: LibraryUi, on: LibraryActions, orders: Map<String, String
                             )
                         }
                     },
-                    dial = { RecordDial(b.progress, "${percent(b)}", chs, shape.dial) },
+                    dial = { RecordDial(b.progress, "${percent(b)}", chs, it) },
                 )
             }
         }
@@ -317,21 +328,48 @@ private fun RecField(k: String, v: @Composable () -> Unit) {
 
 /** The record body under its rule: fields on the left, the scope on the right. */
 @Composable
-private fun RecBody(file: @Composable () -> Unit, fields: @Composable () -> Unit = {}, dial: @Composable () -> Unit) {
+private fun RecBody(file: @Composable () -> Unit, fields: @Composable () -> Unit = {}, dial: @Composable (size: Dp) -> Unit) {
     val c = colors(); val shape = LocalShape.current
     Column(Modifier.padding(top = 14.dp).fillMaxWidth().hairline(c.rule, top = true).padding(top = if (shape.twoColumn) 10.dp else 12.dp)) {
         if (shape.tablet) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) { file(); fields() }
-                Spacer(Modifier.width(10.dp))
-                Box(Modifier.padding(end = 2.dp, top = 8.dp, bottom = 12.dp)) { dial() }
+            // the dial beside the fields; filling the first screen (LocalStretch), it moves below
+            // them and grows instead, if that makes it markedly bigger. Any height left over
+            // stays at the foot, above the Continue bar.
+            val stretch = LocalStretch.current
+            SubcomposeLayout(Modifier.fillMaxWidth()) { cs ->
+                val w = cs.maxWidth
+                val base = shape.dial.roundToPx()
+                val gap = 10.dp.roundToPx(); val endPad = 2.dp.roundToPx()
+                val padT = 8.dp.roundToPx(); val padB = 12.dp.roundToPx()
+                val extra = stretch.roundToPx().coerceAtLeast(0)
+                val col: @Composable () -> Unit = { Column(verticalArrangement = Arrangement.spacedBy(3.dp)) { file(); fields() } }
+                fun fieldsAt(key: String, width: Int) = subcompose(key, col).single().measure(Constraints.fixedWidth(width.coerceAtLeast(0)))
+                fun dialAt(key: String, px: Int) = subcompose(key) { dial(px.toDp()) }.single().measure(Constraints())
+                val side = fieldsAt("side", w - base - gap - endPad)
+                val h0 = maxOf(side.height, base + padT + padB)
+                if (extra > 0) {
+                    val full = fieldsAt("full", w)
+                    val big = minOf((w * 0.8f).toInt(), h0 + extra - full.height - padT - padB)
+                    if (big > base * 1.25f) {
+                        val d = dialAt("big", big)
+                        return@SubcomposeLayout layout(w, h0 + extra) {
+                            full.place(0, 0)
+                            d.place((w - d.width) / 2, full.height + padT)
+                        }
+                    }
+                }
+                val d = dialAt("dial", base)
+                layout(w, h0 + extra) {
+                    side.place(0, (h0 - side.height) / 2)
+                    d.place(w - endPad - d.width, (h0 - d.height - padT - padB) / 2 + padT)
+                }
             }
         } else {
             Box(Modifier.padding(bottom = 4.dp)) { file() }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) { fields() }
                 Spacer(Modifier.width(10.dp))
-                Box(Modifier.padding(end = 2.dp, top = 6.dp, bottom = 12.dp)) { dial() }
+                Box(Modifier.padding(end = 2.dp, top = 6.dp, bottom = 12.dp)) { dial(shape.dial) }
             }
         }
     }
@@ -342,7 +380,7 @@ private fun RecBody(file: @Composable () -> Unit, fields: @Composable () -> Unit
 @Composable
 private fun RecordBox(
     tag: String, note: String, onClick: (() -> Unit)?, onLongClick: (() -> Unit)?,
-    go: String?, goRight: String?, body: @Composable () -> Unit,
+    go: String?, goRight: String?, stretch: Dp = LocalStretch.current, body: @Composable () -> Unit,
 ) {
     val c = colors(); val shape = LocalShape.current
     val src = remember { MutableInteractionSource() }
@@ -355,6 +393,8 @@ private fun RecordBox(
                 .padding(top = 22.dp),
         ) {
             Column(Modifier.padding(horizontal = pad).padding(bottom = if (go == null) pad else 0.dp)) { body() }
+            // filling the first screen: the Continue bar keeps to the foot of the box
+            if (stretch > 0.dp) Spacer(Modifier.height(stretch))
             if (go != null) {
                 val fg = if (pressed) c.ink else c.paper
                 Row(

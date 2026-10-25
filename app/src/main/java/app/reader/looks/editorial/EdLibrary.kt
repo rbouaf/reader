@@ -63,7 +63,8 @@ import app.reader.data.Sort
 import app.reader.data.formatSize
 import app.reader.looks.LibraryActions
 import app.reader.looks.LibraryUi
-import app.reader.looks.common.FitHeight
+import app.reader.looks.common.FirstScreen
+import app.reader.looks.common.LocalStretch
 import app.reader.looks.openedLabel
 import app.reader.looks.percent
 import app.reader.theme.Fonts
@@ -122,18 +123,16 @@ fun EditorialLibrary(ui: LibraryUi, on: LibraryActions) {
             Row(Modifier.fillMaxSize().padding(horizontal = d.gut), horizontalArrangement = Arrangement.spacedBy(56.dp)) {
                 BoxWithConstraints(Modifier.width(440.dp).fillMaxHeight()) {
                     val top = insets.calculateTopPadding() + 22.dp
-                    // the header and the whole record fit the first screen; the summary may need a scroll
-                    val budget = maxHeight - top - insets.calculateBottomPadding() - 12.dp
+                    val screen = maxHeight - top
                     Column(
                         Modifier.fillMaxSize().verticalScroll(rememberScrollState())
                             .padding(top = top, bottom = insets.calculateBottomPadding() + 64.dp),
                     ) {
-                        FitHeight(budget, levels = 6) { t ->
-                            val dt = d.copy(t = t)
-                            Head(ui, on, dt)
-                            Record(ui, on, dt)
-                        }
-                        if (ui.loaded && ui.all.isNotEmpty()) Summary(ui, agg, d)
+                        FirstScreen(
+                            screen = screen, bottomInset = insets.calculateBottomPadding(), breathing = 20.dp, levels = 6,
+                            first = { t -> val dt = d.copy(t = t); Head(ui, on, dt); Record(ui, on, dt) },
+                            rest = { if (ui.loaded && ui.all.isNotEmpty()) Summary(ui, agg, d) },
+                        )
                     }
                 }
                 LazyColumn(
@@ -341,7 +340,7 @@ private fun IdleChannel(d: Dims) {
 @Composable
 private fun RecordBox(
     d: Dims, tag: String, note: String, onClick: (() -> Unit)?, go: String?, goRight: String = "",
-    onLongClick: (() -> Unit)? = null, body: @Composable () -> Unit,
+    onLongClick: (() -> Unit)? = null, stretch: Dp = LocalStretch.current, body: @Composable () -> Unit,
 ) {
     val c = colors()
     val (src, pressed) = rememberPress()
@@ -353,6 +352,8 @@ private fun RecordBox(
                     .then(if (onClick != null) Modifier.combinedClickable(src, null, onLongClick = onLongClick, onClick = onClick) else Modifier),
             ) {
                 Column(Modifier.padding(top = d.recPadTop, start = d.recSide, end = d.recSide)) { body() }
+                // filling the first screen: the Continue bar keeps to the foot of the box
+                if (stretch > 0.dp) Spacer(Modifier.height(stretch))
                 if (go != null) {
                     Row(
                         Modifier.padding(top = d.goTop).fillMaxWidth().heightIn(min = d.goH)
@@ -388,8 +389,9 @@ private fun CurrentRecord(b: Book, on: LibraryActions, d: Dims) {
     val c = colors()
     val st = b.state
     val h = remember(b) { history(b) }
+    val chartH = d.chartH + LocalStretch.current
     RecordBox(
-        d, "Now reading", "record 001", onClick = { on.open(b) }, onLongClick = { on.hold(b) },
+        d, "Now reading", "record 001", onClick = { on.open(b) }, onLongClick = { on.hold(b) }, stretch = 0.dp, // the channel takes it
         go = "Continue reading",
         goRight = st.page?.let { p -> st.pages?.let { "page $p of $it" } ?: "page $p" } ?: "",
     ) {
@@ -431,10 +433,10 @@ private fun CurrentRecord(b: Book, on: LibraryActions, d: Dims) {
             Column(Modifier.weight(1f).padding(top = 3.dp, start = 26.dp)) {
                 Box {
                     TraceStrip(
-                        h, Modifier.fillMaxWidth().height(d.chartH).drawBehind { dashedH(c.rule, 0.5f) },
+                        h, Modifier.fillMaxWidth().height(chartH).drawBehind { dashedH(c.rule, 0.5f) },
                         pad = 8.dp, topLine = true, chapters = st.chapters, marks = true, pen = 9.dp, stroke = 1.7.dp,
                     )
-                    YScale(d.chartH, 8.dp, Modifier.offset(x = (-26).dp))
+                    YScale(chartH, 8.dp, Modifier.offset(x = (-26).dp))
                 }
                 Axis(short = true, modifier = Modifier.fillMaxWidth())
                 val pts = (h.week * 100).roundToInt()

@@ -54,7 +54,8 @@ import app.reader.data.Sort
 import app.reader.data.formatSize
 import app.reader.looks.LibraryActions
 import app.reader.looks.LibraryUi
-import app.reader.looks.common.FitHeight
+import app.reader.looks.common.FirstScreen
+import app.reader.looks.common.LocalStretch
 import app.reader.looks.openedLabel
 import app.reader.looks.percent
 import app.reader.theme.Colors
@@ -75,14 +76,13 @@ fun TraceLibrary(ui: LibraryUi, on: LibraryActions, appName: String = "trace") {
                 Row(Modifier.fillMaxSize().padding(horizontal = side), horizontalArrangement = Arrangement.spacedBy(g.ch(5))) {
                     BoxWithConstraints(Modifier.width(g.ch(50)).fillMaxHeight()) {
                         val top = insets.calculateTopPadding() + g.lines(1.5f)
-                        // the header and the whole record fit the first screen; the summary may need a scroll
-                        val budget = maxHeight - top - insets.calculateBottomPadding() - g.lines(0.5f)
+                        val screen = maxHeight - top
                         Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(top = top, bottom = g.lines(3))) {
-                            FitHeight(budget, levels = 6) { t ->
-                                Head(ui, on, appName, t)
-                                Record(ui, on, t)
-                            }
-                            if (ui.loaded && !ui.isEmpty) Summary(ui)
+                            FirstScreen(
+                                screen = screen, bottomInset = insets.calculateBottomPadding(), breathing = g.lines(1), levels = 6,
+                                first = { t -> Head(ui, on, appName, t); Record(ui, on, t) },
+                                rest = { if (ui.loaded && !ui.isEmpty) Summary(ui) },
+                            )
                         }
                     }
                     LazyColumn(
@@ -228,6 +228,7 @@ private fun Record(ui: LibraryUi, on: LibraryActions, t: Int = 0) {
             RecordBox(
                 "record 001", "now reading", onClick = { on.open(b) }, onLongClick = { on.hold(b) },
                 top = if (t >= 1) g.lines(1.5f) else g.lines(2), gap = if (t >= 1) g.lines(0.5f) else g.lines(1),
+                stretch = 0.dp, // the channel takes it
                 go = "> Continue reading",
                 goRight = st.page?.let { p -> st.pages?.let { "page $p of $it" } ?: "page $p" } ?: "",
             ) {
@@ -249,7 +250,7 @@ private fun Record(ui: LibraryUi, on: LibraryActions, t: Int = 0) {
                             style = RT.base(g, c),
                         )
                     }
-                    field("read") { Channel(b, rows = when { t >= 5 -> 2f; t >= 2 -> 3f; else -> 5f }) }
+                    field("read") { Channel(b, rows = when { t >= 5 -> 2f; t >= 2 -> 3f; else -> 5f }, extra = LocalStretch.current) }
                 }
             }
         }
@@ -262,7 +263,7 @@ private fun Record(ui: LibraryUi, on: LibraryActions, t: Int = 0) {
 fun RecordBox(
     tag: String, tagNote: String, onClick: () -> Unit, onLongClick: (() -> Unit)? = null,
     go: String, goRight: String, modifier: Modifier = Modifier,
-    top: Dp = grid().lines(2), gap: Dp = grid().lines(1), body: @Composable () -> Unit,
+    top: Dp = grid().lines(2), gap: Dp = grid().lines(1), stretch: Dp = LocalStretch.current, body: @Composable () -> Unit,
 ) {
     val g = grid(); val c = colors()
     val src = remember { MutableInteractionSource() }
@@ -275,6 +276,8 @@ fun RecordBox(
                 .padding(top = g.lines(1) - border, start = border, end = border, bottom = border),
         ) {
             Column(Modifier.padding(horizontal = g.ch(2) - border)) { body() }
+            // filling the first screen: the Continue bar keeps to the foot of the box
+            if (stretch > 0.dp) Spacer(Modifier.height(stretch))
             Row(
                 Modifier.padding(top = gap).fillMaxWidth().heightIn(min = g.lines(2.5f))
                     .background(if (pressed) c.paper else c.ink).padding(horizontal = g.ch(2) - border),
